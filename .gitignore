@@ -1,0 +1,18 @@
+# 操作系统杂项
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# 依赖与包管理器（本项目无构建、无第三方依赖，留作未来 npm 发布准备）
+node_modules/
+.npm/
+package-lock.json
+
+# 日志与临时产物
+*.log
+*.tmp
+coverage/
+
+# 本机运行时数据（登录快照只存 DSH 页面 localStorage，任何本地残留都不入仓）
+*.local
+.snapshot.json
