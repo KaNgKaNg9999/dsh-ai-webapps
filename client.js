@@ -2,7 +2,7 @@
  * Client 半区（M0-B）：左栏入口 + 主面板工具栏 + 常驻宿主 webview。
  * - 宿主：`shell.overlay` 单例容器，`position:fixed`，永不 reparent（每个 lease 只能 attach 一次）。
  * - 占位 div 只提供几何；隐藏只改 visibility/pointer-events 并移出视口，guest 不重建。
- * - 快照采集/回填在 M0-D，设置页在 M0-E；本步骤不含 executeJavaScript。
+ * - 快照采集/回填在 M0-D，设置页在 M0-E（`settings.section` + `settings.section.icon`）。
  */
 window.__ModuleLoader__.load({
   id: 'dsh-ai-webapps',
@@ -49,10 +49,44 @@ window.__ModuleLoader__.load({
       crashed: '页面已崩溃，正在重建…',
       retry: '刷新重试',
       loginStale: '登录已失效，请重新登录',
-      bridgeReady: '桌面桥：可用',
       bridgeMissing: '桌面桥：不可用（需要 DSH 桌面端）',
       bridgeMismatch: '桌面桥：协议版本不符',
       protocol: '协议',
+      settingsNav: 'DeepSeek 网页',
+      settingsTitle: 'DeepSeek 网页面板',
+      settingsDesc: '把 DeepSeek 网页版放进主面板：切面板不重载，登录一次后本机重启保持登录。',
+      settingsOpen: '打开面板',
+      settingsTarget: '面板位置',
+      settingsTargetValue: '左栏「DeepSeek」行 → 主面板',
+      settingsSite: '站点',
+      settingsUrl: '地址',
+      settingsCopy: '复制地址',
+      settingsSnapshot: '登录快照',
+      settingsStatusSaved: '已保存',
+      settingsStatusMissing: '未保存',
+      settingsStatusStale: '已失效',
+      settingsSavedAt: '保存时间',
+      settingsKeys: 'localStorage 键',
+      settingsCookie: 'cookie 条数',
+      settingsSize: '快照大小',
+      settingsSkipped: '跳过的大值',
+      settingsTruncated: '总量截断',
+      settingsSaveNow: '立即保存',
+      settingsClear: '清除已保存登录',
+      settingsSavedOk: '已保存新的登录快照',
+      settingsNeedSignin: '未能保存：先在面板里完成登录',
+      settingsPanelClosed: '未能保存：先打开 DeepSeek 面板加载一次',
+      settingsCleared: '已清除本机保存的登录',
+      settingsBridge: '桌面桥',
+      settingsBridgeOk: '可用',
+      settingsBridgeDown: '不可用',
+      settingsLimits: '已知限制',
+      settingsLimit1: '仅 DSH 桌面端可用；每台机器各自登录一次。',
+      settingsLimit2: '下载、麦克风/摄像头、通知、剪贴板读取与站点弹窗不可用。',
+      settingsLimit3: '快照以明文存于本机页面存储（等同浏览器 Cookie 文件），可在此清除。',
+      settingsLimit4: 'guest 开发者工具在打包版关闭，排障依赖 [aiwa] console 日志。',
+      yes: '是',
+      no: '否',
     };
 
     const en = {
@@ -77,10 +111,44 @@ window.__ModuleLoader__.load({
       crashed: 'The page crashed; rebuilding…',
       retry: 'Reload',
       loginStale: 'Saved sign-in expired; sign in again',
-      bridgeReady: 'Desktop bridge: available',
       bridgeMissing: 'Desktop bridge: unavailable (DSH Desktop required)',
       bridgeMismatch: 'Desktop bridge: protocol mismatch',
       protocol: 'protocol',
+      settingsNav: 'DeepSeek web',
+      settingsTitle: 'DeepSeek web panel',
+      settingsDesc: 'Embeds the DeepSeek web app in the main panel: switching panels never reloads it, and one sign-in survives restarts on this machine.',
+      settingsOpen: 'Open panel',
+      settingsTarget: 'Location',
+      settingsTargetValue: 'Sidebar "DeepSeek" row → main panel',
+      settingsSite: 'Site',
+      settingsUrl: 'Address',
+      settingsCopy: 'Copy address',
+      settingsSnapshot: 'Saved sign-in',
+      settingsStatusSaved: 'Saved',
+      settingsStatusMissing: 'Not saved',
+      settingsStatusStale: 'Expired',
+      settingsSavedAt: 'Saved at',
+      settingsKeys: 'localStorage keys',
+      settingsCookie: 'Cookies',
+      settingsSize: 'Snapshot size',
+      settingsSkipped: 'Skipped large values',
+      settingsTruncated: 'Truncated',
+      settingsSaveNow: 'Save now',
+      settingsClear: 'Clear saved sign-in',
+      settingsSavedOk: 'Saved a fresh sign-in snapshot',
+      settingsNeedSignin: 'Not saved: sign in inside the panel first',
+      settingsPanelClosed: 'Not saved: open the DeepSeek panel once to load it',
+      settingsCleared: 'Saved sign-in cleared on this machine',
+      settingsBridge: 'Desktop bridge',
+      settingsBridgeOk: 'available',
+      settingsBridgeDown: 'unavailable',
+      settingsLimits: 'Known limits',
+      settingsLimit1: 'Desktop only; sign in once per machine.',
+      settingsLimit2: 'Downloads, mic/camera, notifications, clipboard reads and site dialogs are unavailable.',
+      settingsLimit3: 'The snapshot is plain text in this machine\'s page storage (like a browser cookie file); clear it here.',
+      settingsLimit4: 'Guest devTools are off in packaged builds; diagnosis relies on the [aiwa] console log.',
+      yes: 'yes',
+      no: 'no',
     };
 
     const CSS = [
@@ -134,6 +202,27 @@ window.__ModuleLoader__.load({
       '@media (prefers-reduced-motion:reduce){.aiwa-mark::after,.aiwa-phase::before,.aiwa-progress::after,.aiwa-card::before,.aiwa-card::after,.aiwa-placeholder,.aiwa-step-dot{animation:none}.aiwa-host,.aiwa-step{transition:none}}',
       '.aiwa-host{position:fixed;left:0;top:0;width:0;height:0;z-index:1;overflow:hidden;visibility:hidden;pointer-events:none;background:var(--dsw-alias-bg-base);opacity:0;transition:opacity .2s ease}',
       '.aiwa-guest{position:absolute;inset:0;width:100%;height:100%;border:0;background:var(--dsw-alias-bg-base)}',
+      // 设置页（settings.section）：自带样式，不依赖宿主 CSS Module 类名。
+      '.aiwa-sec{display:flex;flex-direction:column;gap:14px;padding:2px 2px 28px;max-width:620px;box-sizing:border-box;color:var(--dsw-alias-label-primary)}',
+      '.aiwa-sec-head{display:flex;flex-direction:column;gap:6px}',
+      '.aiwa-sec-title{font-size:15px;font-weight:600;line-height:22px}',
+      '.aiwa-sec-desc{font-size:12.5px;line-height:19px;color:var(--dsw-alias-label-secondary)}',
+      '.aiwa-sec-card{display:flex;flex-direction:column;gap:10px;padding:14px 16px;border:1px solid var(--dsw-alias-border-l1);border-radius:12px;background:var(--dsw-alias-bg-layer-1)}',
+      '.aiwa-sec-card-head{display:flex;align-items:center;gap:8px;min-height:22px}',
+      '.aiwa-sec-card-title{font-size:13px;font-weight:600}',
+      '.aiwa-sec-row{display:flex;align-items:baseline;gap:10px;font-size:12.5px;line-height:19px;min-width:0}',
+      '.aiwa-sec-key{flex:none;min-width:92px;color:var(--dsw-alias-label-tertiary)}',
+      '.aiwa-sec-val{min-width:0;color:var(--dsw-alias-label-primary);word-break:break-all;user-select:text}',
+      '.aiwa-sec-mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px}',
+      '.aiwa-sec-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}',
+      '.aiwa-sec-note{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}',
+      '.aiwa-pill{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;line-height:18px;padding:1px 8px;border-radius:999px;border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary)}',
+      '.aiwa-pill[data-tone="ok"]{color:var(--dsw-alias-state-success-primary);border-color:color-mix(in srgb,var(--dsw-alias-state-success-primary) 40%,var(--dsw-alias-border-l2))}',
+      '.aiwa-pill[data-tone="warn"]{color:var(--dsw-alias-state-warn-primary);border-color:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 40%,var(--dsw-alias-border-l2))}',
+      '.aiwa-pill[data-tone="error"]{color:var(--dsw-alias-state-error-primary);border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 40%,var(--dsw-alias-border-l2))}',
+      '.aiwa-sec-list{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;font-size:12.5px;line-height:19px;color:var(--dsw-alias-label-secondary)}',
+      '.aiwa-btn[disabled]{opacity:.5;cursor:default}',
+      '.aiwa-btn[disabled]:hover{background:transparent;color:var(--dsw-alias-label-secondary)}',
     ].join('');
 
     /**
@@ -1063,6 +1152,23 @@ window.__ModuleLoader__.load({
       return Promise.resolve(fallbackCopy(text));
     }
 
+    /** 设置页用的两个格式化：时间按本机时区，大小按 KB/MB。 */
+    function formatTime(ts) {
+      if (!ts) return '';
+      try {
+        return new Date(ts).toLocaleString();
+      } catch (error) {
+        return String(ts);
+      }
+    }
+
+    function formatSize(size) {
+      if (!size) return '0 KB';
+      if (size < 1024) return size + ' B';
+      if (size < 1024 * 1024) return (size / 1024).toFixed(1) + ' KB';
+      return (size / 1024 / 1024).toFixed(1) + ' MB';
+    }
+
     /** 宿主容器：由 shell.overlay 常驻渲染，React 只负责提供这一个稳定节点。 */
     function HostOverlay({ controller }) {
       const ref = useRef(null);
@@ -1188,13 +1294,185 @@ window.__ModuleLoader__.load({
       );
     }
 
+    /**
+     * 设置页（`settings.section`）：URL、登录快照状态、立即保存、清除登录。
+     * 只读 localStorage 与宿主状态，不碰 lease；面板没打开时保存会给出明确原因。
+     */
+    function SettingsSection({ t, controller, openPanel, close }) {
+      const [hostState, setHostState] = useState(() => controller.host.getState());
+      const [info, setInfo] = useState(() => controller.snapshotInfo());
+      const [busy, setBusy] = useState(false);
+      const [note, setNote] = useState('');
+      const bridge = useMemo(readBridge, []);
+
+      useEffect(() => {
+        const refresh = () => {
+          setHostState(controller.host.getState());
+          setInfo(controller.snapshotInfo());
+        };
+        const unsubscribe = controller.host.subscribe(refresh);
+        const timer = setInterval(refresh, 5000);
+        window.addEventListener('focus', refresh);
+        refresh();
+        return () => {
+          unsubscribe();
+          clearInterval(timer);
+          window.removeEventListener('focus', refresh);
+        };
+      }, [controller]);
+
+      useEffect(() => {
+        if (!note) return undefined;
+        const timer = setTimeout(() => setNote(''), 2600);
+        return () => clearTimeout(timer);
+      }, [note]);
+
+      const onOpen = () => {
+        if (typeof openPanel === 'function') openPanel();
+        if (typeof close === 'function') close();
+      };
+      const onCopy = () => {
+        copyText((info && info.url) || SITE_URL).then((ok) => setNote(ok ? t('copied') : t('copiedFailed')));
+      };
+      const onSave = async () => {
+        if (busy) return;
+        setBusy(true);
+        try {
+          const result = await controller.saveSnapshot();
+          setHostState(controller.host.getState());
+          setInfo(controller.snapshotInfo());
+          setNote(result.ok
+            ? t('settingsSavedOk')
+            : result.reason === 'signin' ? t('settingsNeedSignin') : t('settingsPanelClosed'));
+        } finally {
+          setBusy(false);
+        }
+      };
+      const onClear = () => {
+        controller.clearLogin();
+        setHostState(controller.host.getState());
+        setInfo(controller.snapshotInfo());
+        setNote(t('settingsCleared'));
+      };
+
+      const statusTone = !info ? 'warn' : info.stale ? 'error' : 'ok';
+      const statusText = !info ? t('settingsStatusMissing') : info.stale ? t('settingsStatusStale') : t('settingsStatusSaved');
+      const bridgeText = (bridge.status === 'ready' ? t('settingsBridgeOk')
+        : bridge.status === 'mismatch' ? t('bridgeMismatch') : t('settingsBridgeDown'))
+        + (bridge.protocol === null ? '' : ' · ' + t('protocol') + ' ' + String(bridge.protocol));
+      const ready = hostState.phase === 'ready';
+
+      const row = (key, value, mono) => h('div', { className: 'aiwa-sec-row', key },
+        h('span', { className: 'aiwa-sec-key' }, key),
+        h('span', { className: mono ? 'aiwa-sec-val aiwa-sec-mono' : 'aiwa-sec-val' }, value),
+      );
+
+      return h('div', { className: 'aiwa-sec' },
+        h('style', null, CSS),
+        h('div', { className: 'aiwa-sec-head' },
+          h('div', { className: 'aiwa-sec-title' }, t('settingsTitle')),
+          h('div', { className: 'aiwa-sec-desc' }, t('settingsDesc')),
+        ),
+        h('div', { className: 'aiwa-sec-card' },
+          h('div', { className: 'aiwa-sec-card-head' },
+            h('span', { className: 'aiwa-sec-card-title' }, t('settingsTarget')),
+            h('span', { className: 'aiwa-spacer' }),
+            h('button', { className: 'aiwa-btn aiwa-btn-primary', type: 'button', onClick: onOpen }, t('settingsOpen')),
+          ),
+          h('div', { className: 'aiwa-sec-note' }, t('settingsTargetValue')),
+        ),
+        h('div', { className: 'aiwa-sec-card' },
+          h('div', { className: 'aiwa-sec-card-head' },
+            h('span', { className: 'aiwa-sec-card-title' }, t('settingsSite')),
+            h('span', { className: 'aiwa-spacer' }),
+            h('button', { className: 'aiwa-btn', type: 'button', onClick: onCopy }, t('settingsCopy')),
+          ),
+          row(t('settingsUrl'), (info && info.url) || SITE_URL, true),
+        ),
+        h('div', { className: 'aiwa-sec-card' },
+          h('div', { className: 'aiwa-sec-card-head' },
+            h('span', { className: 'aiwa-sec-card-title' }, t('settingsSnapshot')),
+            h('span', { className: 'aiwa-spacer' }),
+            h('span', { className: 'aiwa-pill', 'data-tone': statusTone }, statusText),
+          ),
+          row(t('settingsSavedAt'), info ? (info.savedAt ? formatTime(info.savedAt) : '—') : '—'),
+          info ? row(t('settingsKeys'), String(info.keys)) : null,
+          info ? row(t('settingsCookie'), String(info.cookies)) : null,
+          info ? row(t('settingsSize'), formatSize(info.size)) : null,
+          info ? row(t('settingsSkipped'), String(info.skipped)) : null,
+          info ? row(t('settingsTruncated'), info.truncated ? t('yes') : t('no')) : null,
+          h('div', { className: 'aiwa-sec-actions' },
+            h('button', {
+              className: 'aiwa-btn aiwa-btn-primary',
+              type: 'button',
+              disabled: busy || !ready,
+              onClick: onSave,
+            }, t('settingsSaveNow')),
+            h('button', {
+              className: 'aiwa-btn aiwa-btn-danger',
+              type: 'button',
+              disabled: busy || !info,
+              onClick: onClear,
+            }, t('settingsClear')),
+            note ? h('span', { className: 'aiwa-sec-note' }, note) : null,
+          ),
+          !ready ? h('div', { className: 'aiwa-sec-note' }, t('settingsPanelClosed')) : null,
+        ),
+        h('div', { className: 'aiwa-sec-card' },
+          h('div', { className: 'aiwa-sec-card-head' },
+            h('span', { className: 'aiwa-sec-card-title' }, t('settingsBridge')),
+            h('span', { className: 'aiwa-spacer' }),
+            h('span', { className: 'aiwa-pill', 'data-tone': bridge.status === 'ready' ? 'ok' : 'warn' }, bridgeText),
+          ),
+        ),
+        h('div', { className: 'aiwa-sec-card' },
+          h('div', { className: 'aiwa-sec-card-head' },
+            h('span', { className: 'aiwa-sec-card-title' }, t('settingsLimits')),
+          ),
+          h('ul', { className: 'aiwa-sec-list' },
+            h('li', null, t('settingsLimit1')),
+            h('li', null, t('settingsLimit2')),
+            h('li', null, t('settingsLimit3')),
+            h('li', null, t('settingsLimit4')),
+          ),
+        ),
+      );
+    }
+
     /** 工具栏与宿主共用的控制器：宿主在 apply 时创建一次，随插件生命周期释放。 */
     function createController() {
       const host = createHost();
       return {
         host,
-        saveSnapshot() {
-          return host.collectSnapshot();
+        /** 设置页只读的快照摘要；不返回任何值，只有键数/条数/时间/标记。 */
+        snapshotInfo() {
+          const site = readSnapshotSite();
+          if (!site) return null;
+          let size = 0;
+          try {
+            const raw = localStorage.getItem(SNAPSHOT_KEY);
+            size = raw ? raw.length : 0;
+          } catch (error) {
+            size = 0;
+          }
+          const stored = site.localStorage && typeof site.localStorage === 'object' ? site.localStorage : {};
+          const cookie = typeof site.cookie === 'string' ? site.cookie : '';
+          return {
+            savedAt: typeof site.savedAt === 'number' ? site.savedAt : 0,
+            url: typeof site.url === 'string' && site.url ? site.url : SITE_URL,
+            stale: site.stale === true,
+            keys: Object.keys(stored).length,
+            cookies: cookie ? cookie.split(';').filter((part) => part.trim() !== '').length : 0,
+            size,
+            skipped: typeof site.skipped === 'number' ? site.skipped : 0,
+            truncated: site.truncated === true,
+          };
+        },
+        /** 立即采集；失败时给出原因，供设置页写清「为什么没保存」。 */
+        async saveSnapshot() {
+          const site = await host.collectSnapshot();
+          if (site) return { ok: true, reason: null };
+          return { ok: false, reason: host.getState().phase === 'ready' ? 'signin' : 'closed' };
         },
         clearLogin() {
           host.clearSnapshot();
@@ -1238,6 +1516,29 @@ window.__ModuleLoader__.load({
           locale: NS,
           inject: () => ({ controller }),
         }, HostOverlay)), 'aiwa: guest host');
+
+        const openPanel = () => {
+          try {
+            ctx.layout.selectPanel(PANEL_ID);
+          } catch (error) {
+            console.warn('[aiwa] open panel from settings failed', error && error.message);
+          }
+        };
+
+        ctx.effect(() => ctx.slots.inject('settings.section', () => ctx.slots.register({
+          name: 'settings.section',
+          id: NS,
+          order: 55,
+          label: () => t('settingsNav'),
+          locale: NS,
+          inject: () => ({ controller, openPanel }),
+        }, SettingsSection)), 'aiwa: settings section');
+
+        // dsh 0.2.2 起有独立的导航图标位；宿主不声明该槽时 inject 只是等待，不报错。
+        ctx.effect(() => ctx.slots.inject('settings.section.icon', () => ctx.slots.register({
+          name: 'settings.section.icon',
+          id: NS,
+        }, (owner = {}) => h(DeepSeekGlyph, { size: owner.size ?? 16 }))), 'aiwa: settings nav icon');
 
         // 插件卸载 / HMR：释放 lease、移除容器、断开观察者。
         ctx.effect(() => () => controller.host.dispose(), 'aiwa: guest lifetime');

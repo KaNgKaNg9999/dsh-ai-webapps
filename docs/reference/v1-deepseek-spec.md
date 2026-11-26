@@ -48,7 +48,7 @@
 5. 默认分区内存级；`persist:` 分支已随还原消失（只剩历史）。
 6. 主面板 `main` 是 keyed slot，只渲染选中 key；`.mainPanel` 是 `flex:1; min-height:0` 的 flex column，本身不被卸载。
 7. `sidebar.panellist` 注册项 = 图标组件 + `id/order/label`；id 即 `main` 的 key。
-8. `settings.section` 注册项 = `id/order/label` + 组件（拿到 `{close}`）。
+8. `settings.section` 注册项 = `id/order/label`（可选 `locale`/`inject`）+ 组件（接收 owner props，如 `{close}`）；dsh 0.2.2 另有 `settings.section.icon`（`{name,id}` + 组件收 `{size}`）专供设置导航图标，宿主不声明时 `inject` 只等待（2026-11-26 从已装插件 `dsh-mcp-connector`/`dsh-mobile-plugin`/`dshmarket` 源码核实）。
 9. 关窗口 = 隐藏到托盘（`main.js:21470-21482`）。
 10. DeepSeek：token 在 localStorage、请求 `Authorization: Bearer`；设备信息也在 localStorage；另有数美环境指纹与 `check_device`。
 11. 三家站点禁 iframe；本机代理 `127.0.0.1:6234`，DeepSeek 可达。
@@ -170,7 +170,7 @@ DeepSeek 对嵌入会话的风控与 Turnstile、换机重验、DSH 升级改协
 ## 10. 剩余未知（只剩真机项）
 
 - 回填注入已重启验证（2026-11-26）；stale 判定与 `render-process-gone` 自动重建尚未触发；
-- `shell.overlay` 与 body 弹窗的层级关系（契约与运行态已回填，遮挡关系留 V）；`settings.section` 第三方注册；
+- `settings.section` 与 `settings.section.icon` 第三方注册已真机通过（2026-11-26：设置页可见、可用）；`shell.overlay` 与 body 弹窗的遮挡关系仍留 V 逐项目视（设置弹窗打开时 `[inert]` 隐藏已生效）；
 - Turnstile 是否放行（登录已由用户手动完成，未记录是否触发）；
 - 回填后 `check_device` 是否放行；
 - 选中态是否持久（已按 T13 兜底）。

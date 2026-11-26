@@ -7,7 +7,7 @@
 
 - 纯 JavaScript（无构建、无第三方依赖）的 DSH bundle：Client 半区全部逻辑在 `client.js`，Host 半区是空壳 `index.js`（`export function apply() {}`）。
 - React 由宿主 `window.__ModuleLoader__` 提供（`require('react')`），禁止 `require` 任何 `@deepseek-ai/*` Client 包。
-- 依赖 DSH `0.2.2-rc.5` 的公开 Slot 契约：`sidebar.panellist`（左栏图标行）、`main`（keyed 主面板）、`settings.section`（设置页）、`shell.overlay`（frame 级常驻浮层）。
+- 依赖 DSH `0.2.2-rc.5` 的公开 Slot 契约：`sidebar.panellist`（左栏图标行）、`main`（keyed 主面板）、`settings.section` + `settings.section.icon`（设置页与其导航图标，后者是 0.2.2 新增的独立图标位，宿主不声明时 `inject` 只是等待）、`shell.overlay`（frame 级常驻浮层）。
 - 依赖 Desktop 内部桥：`globalThis.dshDesktop`（`protocolVersion: 1`）的 `browser` 子 API——`acquire(workspace) → {lease, partition}` / `release(lease) → Promise` / `onOpenRequested(lease, cb) → 取消订阅`；协议版本看 `dshDesktop.protocolVersion`，不是 `browser.protocolVersion`。
 - 引导约束：`<webview>` 首次挂载必须带 `src="about:blank#<lease>"` + `partition="<partition>"`（`name=<lease>`），`dom-ready` 后才 `loadURL`；窗口打开经 `onOpenRequested` 交给系统浏览器。
 
@@ -28,7 +28,7 @@
         ├─ dom-ready：快照探测 → 需要则注入 + reload（每 lease 仅一次）
         ├─ 事件：console-message / did-fail-load / render-process-gone / page-title-updated
         └─ 崩溃：release 旧 lease → 重新 acquire → 重建 webview
-[设置] settings.section(id='ai-webapps')：URL（只读）、登录保存状态、立即保存、清除
+[设置] settings.section(id='ai-webapps')：面板位置/打开面板、站点 URL（只读+复制）、登录快照状态与「立即保存」「清除已保存登录」、桥状态、已知限制
 ```
 
 关键约束（已从 DSH 源码确认）：
