@@ -20,11 +20,11 @@
 ## 任务清单
 
 - [x] A 生成 bundle 骨架：`package.json`（`dsh.bundle.patch` + `dsh.client{platform:'web',immediately:true,inject:[...]}`）、`cordis.patch.yml`（insert 本包）、`index.js`（Host 空壳）、`locale/{zh,en}.json`（含 `meta.title`/`meta.description`/`meta.detail`）、`icon.svg`、`docs/plugin/DETAIL.md`（草案已在库，M0 后转定稿）— 2026-11-26 完成
-- [ ] B 宿主与 webview 生命周期：`shell.overlay` 单例容器（`position:fixed`，永不 reparent）；占位 div 几何跟随（`getBoundingClientRect` + `ResizeObserver`）；`acquire→attach→loadURL`；`render-process-gone` 后 release + 新 lease 重建；`console-message` 转发（前缀 `[aiwa]`）；插件卸载时释放 lease/容器/计时器
-- [ ] C 左栏与主面板注册：`sidebar.panellist`（图标组件 + `id='ai-webapps:deepseek'` + `label`）、`main`（`key` 同 id，工具栏四项：刷新 / 系统浏览器打开 / 复制链接 / 清除登录）；`[inert]` 出现时 blur + 隐藏；`ctx.layout.selectPanel(null)` 启动兜底
+- [ ] B 宿主与 webview 生命周期：`shell.overlay` 单例容器（`position:fixed`，永不 reparent）；占位 div 几何跟随（`getBoundingClientRect` + `ResizeObserver`）；`acquire→attach→loadURL`；`render-process-gone` 后 release + 新 lease 重建；`console-message` 转发（前缀 `[aiwa]`）；`[inert]` 出现时 blur + 隐藏（自 C 移入）；插件卸载时释放 lease/容器/计时器
+- [x] C 左栏与主面板注册：`sidebar.panellist`（图标组件 + `id='ai-webapps:deepseek'` + `label`）、`main`（`key` 同 id，工具栏四项：刷新 / 系统浏览器打开 / 复制链接 / 清除登录）；`ctx.layout.selectPanel(null)` 启动兜底 — 2026-11-26 完成；`[inert]` blur/隐藏挪到 B（C 阶段没有 guest 可 blur）
 - [ ] D 登录快照：采集（`did-finish-load` 后 1.5s、隐藏、切走、20s 轮询、手动；仅已登录时写；单值 64KB 跳过、总量 512KB 截断）；回填（每 lease 一次 + 注入后 reload + 防循环 + `stale` 标记）；站点表 `dsh-ai-webapps.sites.v1`
 - [ ] E 设置页：`settings.section(id='ai-webapps')`，显示 URL、快照状态（键数/时间/是否 stale）、「立即保存」「清除已保存登录」
-- [ ] F 自检与安装：`node --check client.js` / `index.js`；`JSON.parse` 校验 manifest 与 locale；`install_bundle` 安装并在插件页确认行与图标
+- [ ] F 自检与安装：`node --check client.js` / `index.js`；`JSON.parse` 校验 manifest 与 locale；`install_bundle` 安装并在插件页确认行与图标 — 2026-11-26 自检与安装已完成（`application: applied`、行 `include:ai-webapps` active），**待插件页确认标题与图标、页面 console 确认 `[aiwa]` 日志**
 - [ ] V M0 六项验收（见下）真机跑通并回填结果
 
 ## 不在范围
