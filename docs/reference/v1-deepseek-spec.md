@@ -169,6 +169,8 @@ DeepSeek 对嵌入会话的风控与 Turnstile、换机重验、DSH 升级改协
 
 ## 10. 剩余未知（只剩真机项）
 
+> 本节的每项都有对应的操作步骤、通过判据与失败处置，见 `docs/plans/02-M1-缺口验收清单.md`（2026-11-26 落地）；验完在此处就地更新。
+
 - 回填注入已重启验证（2026-11-26）；stale 判定与 `render-process-gone` 自动重建尚未触发；
 - `settings.section` 与 `settings.section.icon` 第三方注册已真机通过（2026-11-26：设置页可见、可用）；`shell.overlay` 与 body 弹窗的遮挡关系仍留 V 逐项目视（设置弹窗打开时 `[inert]` 隐藏已生效）；
 - Turnstile 是否放行（登录已由用户手动完成，未记录是否触发）；
