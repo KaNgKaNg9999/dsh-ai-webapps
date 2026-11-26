@@ -20,12 +20,12 @@
 ## 任务清单
 
 - [x] A 生成 bundle 骨架：`package.json`（`dsh.bundle.patch` + `dsh.client{platform:'web',immediately:true,inject:[...]}`）、`cordis.patch.yml`（insert 本包）、`index.js`（Host 空壳）、`locale/{zh,en}.json`（含 `meta.title`/`meta.description`/`meta.detail`）、`icon.svg`、`docs/plugin/DETAIL.md`（草案已在库，M0 后转定稿）— 2026-11-26 完成
-- [ ] B 宿主与 webview 生命周期：`shell.overlay` 单例容器（`position:fixed`，永不 reparent）；占位 div 几何跟随（`getBoundingClientRect` + `ResizeObserver`）；`acquire→attach→loadURL`；`render-process-gone` 后 release + 新 lease 重建；`console-message` 转发（前缀 `[aiwa]`）；`[inert]` 出现时 blur + 隐藏（自 C 移入）；插件卸载时释放 lease/容器/计时器
+- [x] B 宿主与 webview 生命周期：`shell.overlay` 单例容器（`position:fixed`，永不 reparent）；占位 div 几何跟随（`getBoundingClientRect` + `ResizeObserver`）；`acquire→attach→loadURL`；`render-process-gone` 后 release + 新 lease 重建；`console-message` 转发（前缀 `[aiwa]`）；`[inert]` 出现时 blur + 隐藏（自 C 移入）；插件卸载时释放 lease/容器/计时器 — 2026-11-26 实现并真机验证：`acquire→attach(about:blank#lease)→dom-ready→loadURL→302 /sign_in→ready`，无闪烁无崩溃；期间修复 `protocolVersion` 层级与 `dom-ready` 重入自中断两处 bug（见 spec R14）
 - [x] C 左栏与主面板注册：`sidebar.panellist`（图标组件 + `id='ai-webapps:deepseek'` + `label`）、`main`（`key` 同 id，工具栏四项：刷新 / 系统浏览器打开 / 复制链接 / 清除登录）；`ctx.layout.selectPanel(null)` 启动兜底 — 2026-11-26 完成；`[inert]` blur/隐藏挪到 B（C 阶段没有 guest 可 blur）；**真机：用户确认左栏 DeepSeek 行可见**（主面板工具栏与占位区未逐项核对）
 - [ ] D 登录快照：采集（`did-finish-load` 后 1.5s、隐藏、切走、20s 轮询、手动；仅已登录时写；单值 64KB 跳过、总量 512KB 截断）；回填（每 lease 一次 + 注入后 reload + 防循环 + `stale` 标记）；站点表 `dsh-ai-webapps.sites.v1`
 - [ ] E 设置页：`settings.section(id='ai-webapps')`，显示 URL、快照状态（键数/时间/是否 stale）、「立即保存」「清除已保存登录」
 - [ ] F 自检与安装：`node --check client.js` / `index.js`；`JSON.parse` 校验 manifest 与 locale；`install_bundle` 安装并在插件页确认行与图标 — 2026-11-26 自检与安装已完成（`application: applied`、行 `include:ai-webapps` active）；**左栏行已由用户确认可见**，插件页图标与页面 console 的 `[aiwa]` 日志尚未核对
-- [ ] V M0 六项验收（见下）真机跑通并回填结果
+- [ ] V M0 六项验收（见下）真机跑通并回填结果 — 2026-11-26 部分回填：1 面板渲染通过；2 站点加载到 `/sign_in`（登录页）通过（`console-message` 转发未目视）；3/4/5/6 未测
 
 ## 不在范围
 
@@ -35,6 +35,7 @@
 
 - 2026-11-26：A 顺带加入最小 `client.js` 探测骨架——`package.json` 的 `dsh.client` 必须有 client 入口才能安装；该文件只打印 `[aiwa]` 桥状态，不含面板逻辑（面板在 C，webview 在 B）。
 - 2026-11-26：`locale/*.json` 的 `meta.detail` 指向 `docs/plugin/DETAIL.md`（文本详情页）。dsh-doc 的 `plugin-details.md` 建议详情页只放一张配图、其余信息进 `meta.description`；本项目按已定稿设计保留文本详情页，功能/用法/限制同时写进 `meta.description`。
+- 2026-11-26（B）：T13 启动守卫改为「每页运行首次 apply 才执行」（`globalThis.__aiwaStartupGuarded`）——插件 HMR/重载不应把正在看面板的用户踢回会话；验收 6 的语义不变。另经源码确认，桥调用契约（`acquire→{lease,partition}`、`about:blank#lease` + `partition` 引导、`dom-ready` 后才 `loadURL`）已回填 `docs/reference/v1-deepseek-spec.md` 与 `architecture.md`。
 
 ## 防影响承诺
 

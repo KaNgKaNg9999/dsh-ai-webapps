@@ -3,6 +3,12 @@
 > 格式：倒序，最新在最上；新条目插到本说明块紧下方。每条 ≤5 行：日期 ｜ 批次 ｜ 主题，加 2–3 条要点（完成/文件/设计变更/下一步）。
 > 会话结束协议追加，跨会话续接的唯一进度源。条数 >25 时，第 26 条及更早的整段剪切至 `process-archive.md` 顶部。
 
+## 2026-11-26 ｜ 计划01 ｜ M0-B 完成（真机打通）
+- 回填：spec §2.A/§4/R1/R14 + architecture 记录桥契约、overlay 内联 pointer-events、`dom-ready` 只发一次目标导航
+- 实现：`client.js` 742 行——`shell.overlay` 宿主、占位几何跟随、acquire→attach→loadURL、`[aiwa][guest]` console 转发、崩溃重建（3 次上限）、`[inert]` 隐藏、卸载释放 lease
+- 真机：`acquire→attach(about:blank#lease)→dom-ready→loadURL→302 /sign_in→ready`，无闪烁；修复 `protocolVersion` 层级（在 `dshDesktop` 上）与 `dom-ready` 重入自中断循环
+- 取证方式：临时诊断写 localStorage + 读 LevelDB（含 UTF-16 值）；诊断已移除；V 部分回填（1/2 通过）；下一步 D 登录快照
+
 ## 2026-11-26 ｜ 收尾 ｜ M0-A/C 完成，暂停在 B 前
 - 验证：用户确认左栏 DeepSeek 行可见（C 真机通过）；主面板工具栏、插件页图标、页面 console 的 `[aiwa]` 日志未逐项核对
 - 状态：A/C 完成；F 安装 applied（`include:ai-webapps` active）；B/D/E/V 未做；计划 01 仍 🟡；最近提交 `cf437f9`

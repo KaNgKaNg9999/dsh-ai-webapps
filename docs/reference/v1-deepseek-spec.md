@@ -42,7 +42,7 @@
 ### A. 可依赖（源码可证 / 已实测）
 
 1. `app.asar` 已还原官方原版（sha256 `5EC8ACD9…`，209,083,008 B），本机 = 裸机。
-2. `dshDesktop.browser`（`protocolVersion: 1`）只在 `dsh-app://app` 主帧暴露；方法 `acquire(workspace)` / `release(lease)` / `onOpenRequested(lease, cb)`。
+2. `dshDesktop`（`protocolVersion: 1`）只在 `dsh-app://app` 主帧暴露完整 API，其 `browser` 子 API 为 `acquire(workspace)` → `{lease, partition}`、`release(lease)` → Promise、`onOpenRequested(lease, cb)` → 取消订阅函数；**协议版本挂在 `dshDesktop` 上，不在 `browser` 上**（2026-11-26 源码 + 真机确认）。引导文档：`<webview>` 以 `src="about:blank#<lease>"` + `partition="<partition>"` + `name="<lease>"` 首次挂载完成 attach，`dom-ready` 后才 `loadURL`（主进程此时按 `about:blank#` 校验归属）；窗口打开经 `onOpenRequested` 转发，一律 deny。
 3. `will-attach-webview`：lease + partition 校验，**每个 lease 只 attach 一次**。
 4. 分区按 workspace 字符串缓存；同一 key 在一次运行内重复 acquire 得到**同一分区**（同一 cookie 罐）。
 5. 默认分区内存级；`persist:` 分支已随还原消失（只剩历史）。
@@ -53,6 +53,7 @@
 10. DeepSeek：token 在 localStorage、请求 `Authorization: Bearer`；设备信息也在 localStorage；另有数美环境指纹与 `check_device`。
 11. 三家站点禁 iframe；本机代理 `127.0.0.1:6234`，DeepSeek 可达。
 12. Host 是独立 Node 进程，插件拿不到 Electron session。
+13. `shell.overlay` = frame 内 `.overlayLayer`（`position:absolute; inset:0; z-index:20; pointer-events:none`），其直接子元素被 CSS 设为 `pointer-events:auto`；宿主容器用 `position:fixed` 跟随占位 rect，显隐须**内联**写 `visibility` + `pointer-events` 覆盖该规则（2026-11-26 源码 + 运行态确认）。
 
 ### B. M0 必须运行时验证
 
@@ -93,9 +94,10 @@ DeepSeek 对嵌入会话的风控与 Turnstile、换机重验、DSH 升级改协
 3. **acquire 时机**：第一次"选中且可见"时才 acquire；重复选中幂等。
 4. **崩溃重建**：`render-process-gone` / `destroyed` → 清状态 → `release`（失败忽略）→ **新 lease + 新 webview**（旧 lease 不可复用）。
 5. **插件卸载/HMR**：释放 lease、销毁容器、清 timer、注销 slot 注册。
-6. **启动**：apply 后读 `ctx.layout.panelInfo`，若 `activePanelId === 'ai-webapps:deepseek'` → `selectPanel(null)`（T13）。
+6. **启动**：apply 后读 `ctx.layout.panelInfo`，若 `activePanelId === 'ai-webapps:deepseek'` → `selectPanel(null)`（T13）；守卫只在页面本次运行的首次 apply 生效（HMR / 插件重载不把用户踢回会话）。
 7. **焦点/弹窗**：MutationObserver 监听宿主外出现 `[inert]`（设置弹窗打开的特征）→ `webview.blur()` + 隐藏；消失后恢复。z-index 保持低于 body 级弹窗。
 8. **快捷键**：guest 内按键由 guest 自己处理，DSH 快捷键不会误触；面板内不新增全局快捷键（V1）。
+9. **加载只发一次**（2026-11-26 真机）：`dom-ready` 会在引导文档与站点文档各触发一次；目标 `loadURL` 只在引导文档触发一次，站点文档的 `dom-ready` 不得重放，否则每次加载都会中断自己、形成闪烁循环。`loadURL`/`did-fail-load` 的 `ERR_ABORTED (-3)` 是旧导航被重定向取代的良性错误，不按失败处理；仅当 2s 后仍停在 `about:blank#lease` 时补一次重试。
 
 ---
 
@@ -147,7 +149,7 @@ DeepSeek 对嵌入会话的风控与 Turnstile、换机重验、DSH 升级改协
 
 | # | 新问题 | 处置 |
 |---|---|---|
-| R1 | `shell.overlay` 的常驻性 / `pointer-events` / z-index 与 body 弹窗的层级**未验** | M0 第一件事验；不行退 body fixed；再不行才考虑往 `.mainPanel` 追加节点（有 React 干扰风险） |
+| R1 | `shell.overlay` 的常驻性 / `pointer-events` / z-index 与 body 弹窗的层级**未验** | **已回填（2026-11-26）**：契约与运行态确认——root list、frame 内 `.overlayLayer`（absolute inset 0、z-index 20），整层点击穿透且直接子元素被置 `pointer-events:auto`；宿主容器 `position:fixed` 跟随占位 rect，显隐用内联 `visibility`+`pointer-events` 覆盖。**与 body 弹窗的层级仍留 V 真机确认** |
 | R2 | **回填死循环**：失效 token 会被反复回填 → 无限 reload | 每 lease 只回填一次 + 落地登录路径即标 `stale` 停止回填 |
 | R3 | 坏快照覆盖好快照 | 采集只在"已登录"判定成立时写 |
 | R4 | 设置弹窗打开时宿主可能浮在上层且焦点留在 guest | 监听 `[inert]` → blur + 隐藏；z-index 低于弹窗 |
@@ -160,12 +162,14 @@ DeepSeek 对嵌入会话的风控与 Turnstile、换机重验、DSH 升级改协
 | R11 | UA 覆盖有副作用（client hints、站点特性开关） | 默认不改，仅 Turnstile 失败时作为设置项开启 |
 | R12 | 未选中时若忘关 pointer-events 会挡住会话 | 显隐必须同时改 visibility + pointer-events，并有 rect>0 自检 |
 | R13 | 回填后可能停在登录子路径（站点自己跳转） | reload 后校验 URL，必要时 `loadURL(origin)` 回首页 |
+| R14 | `dom-ready` 对引导文档和站点文档各触发一次，若每次都 `loadURL` 会自中断成闪烁循环（2026-11-26 实测） | 每 guest 只发一次目标导航；`ERR_ABORTED (-3)` 不按失败处理，仅在仍停在 `about:blank#lease` 时补一次重试 |
 
 ---
 
 ## 10. 剩余未知（只剩真机项）
 
-- 桥/`executeJavaScript`/`shell.overlay`/`settings.section` 六项运行时行为；
+- 桥实际调用：`acquire` / attach / `loadURL` / 崩溃重建、`executeJavaScript` 读写 guest storage；
+- `shell.overlay` 与 body 弹窗的层级关系（契约与运行态已回填，遮挡关系留 V）；`settings.section` 第三方注册；
 - Turnstile 是否放行；
 - 回填后 `check_device` 是否放行；
 - 选中态是否持久（已按 T13 兜底）。

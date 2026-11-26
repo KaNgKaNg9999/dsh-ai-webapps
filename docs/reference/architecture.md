@@ -8,7 +8,8 @@
 - 纯 JavaScript（无构建、无第三方依赖）的 DSH bundle：Client 半区全部逻辑在 `client.js`，Host 半区是空壳 `index.js`（`export function apply() {}`）。
 - React 由宿主 `window.__ModuleLoader__` 提供（`require('react')`），禁止 `require` 任何 `@deepseek-ai/*` Client 包。
 - 依赖 DSH `0.2.2-rc.5` 的公开 Slot 契约：`sidebar.panellist`（左栏图标行）、`main`（keyed 主面板）、`settings.section`（设置页）、`shell.overlay`（frame 级常驻浮层）。
-- 依赖 Desktop 内部桥：`globalThis.dshDesktop.browser`（`protocolVersion: 1`，方法仅 `acquire(workspace)` / `release(lease)` / `onOpenRequested(lease, cb)`）。
+- 依赖 Desktop 内部桥：`globalThis.dshDesktop`（`protocolVersion: 1`）的 `browser` 子 API——`acquire(workspace) → {lease, partition}` / `release(lease) → Promise` / `onOpenRequested(lease, cb) → 取消订阅`；协议版本看 `dshDesktop.protocolVersion`，不是 `browser.protocolVersion`。
+- 引导约束：`<webview>` 首次挂载必须带 `src="about:blank#<lease>"` + `partition="<partition>"`（`name=<lease>`），`dom-ready` 后才 `loadURL`；窗口打开经 `onOpenRequested` 交给系统浏览器。
 
 ## 模块与数据流
 
@@ -30,7 +31,12 @@
 [设置] settings.section(id='ai-webapps')：URL（只读）、登录保存状态、立即保存、清除
 ```
 
-关键约束（已从 DSH 源码确认）：主进程 `will-attach-webview` 校验 lease 与 partition，**每个 lease 只允许 attach 一次**；因此 webview **一旦创建就不能移动/脱离 document**，宿主必须常驻，显隐只改 `visibility` 与 `pointer-events`。
+关键约束（已从 DSH 源码确认）：
+
+- 主进程 `will-attach-webview` 校验 lease 与 partition，**每个 lease 只允许 attach 一次**；因此 webview **一旦创建就不能移动/脱离 document**，宿主必须常驻，显隐只改 `visibility` 与 `pointer-events`。
+- 引导文档 `about:blank#<lease>` 先 attach，`dom-ready` 后主进程才认领 lease，之后才允许 `loadURL` 目标站点。
+- `dom-ready` 对引导文档与站点文档各触发一次：目标导航每 guest 只发一次，站点文档的 `dom-ready` 不得重放；`ERR_ABORTED (-3)` 视为旧导航被重定向取代，不按加载失败处理。
+- `shell.overlay` 是 frame 内 `.overlayLayer`（`absolute; inset:0; z-index:20; pointer-events:none`）；其直接子元素被全局 CSS 设为 `pointer-events:auto`，宿主容器的显隐必须用**内联** `visibility` + `pointer-events` 覆盖。
 
 ## 数据与存储
 
