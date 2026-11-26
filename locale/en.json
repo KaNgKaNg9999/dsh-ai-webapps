@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "DeepSeek web panel",
+    "description": "Embeds the DeepSeek web chat in a DSH main panel. Switching panels keeps the page loaded, and one sign-in per machine survives a restart. Open the DeepSeek row in the left sidebar; the toolbar offers refresh, open in the system browser, copy link, and clear sign-in. Desktop only; each machine signs in once.",
+    "detail": "docs/plugin/DETAIL.md"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "DeepSeek 网页面板",
+    "description": "在 DSH 主面板内嵌 DeepSeek 网页版聊天，切到会话再切回来页面不重载；同一台机器登录一次后，重启 DSH 自动恢复登录。左栏点 DeepSeek 行进入，顶部工具栏可刷新、用系统浏览器打开、复制链接、清除登录。仅桌面端可用；每台机器各自登录一次。",
+    "detail": "docs/plugin/DETAIL.md"
+  }
+}

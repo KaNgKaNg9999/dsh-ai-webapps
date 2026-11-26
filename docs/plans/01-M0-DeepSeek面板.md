@@ -19,7 +19,7 @@
 
 ## 任务清单
 
-- [ ] A 生成 bundle 骨架：`package.json`（`dsh.bundle.patch` + `dsh.client{platform:'web',immediately:true,inject:[...]}`）、`cordis.patch.yml`（insert 本包）、`index.js`（Host 空壳）、`locale/{zh,en}.json`（含 `meta.title`/`meta.description`/`meta.detail`）、`icon.svg`、`docs/plugin/DETAIL.md`（草案已在库，M0 后转定稿）
+- [x] A 生成 bundle 骨架：`package.json`（`dsh.bundle.patch` + `dsh.client{platform:'web',immediately:true,inject:[...]}`）、`cordis.patch.yml`（insert 本包）、`index.js`（Host 空壳）、`locale/{zh,en}.json`（含 `meta.title`/`meta.description`/`meta.detail`）、`icon.svg`、`docs/plugin/DETAIL.md`（草案已在库，M0 后转定稿）— 2026-11-26 完成
 - [ ] B 宿主与 webview 生命周期：`shell.overlay` 单例容器（`position:fixed`，永不 reparent）；占位 div 几何跟随（`getBoundingClientRect` + `ResizeObserver`）；`acquire→attach→loadURL`；`render-process-gone` 后 release + 新 lease 重建；`console-message` 转发（前缀 `[aiwa]`）；插件卸载时释放 lease/容器/计时器
 - [ ] C 左栏与主面板注册：`sidebar.panellist`（图标组件 + `id='ai-webapps:deepseek'` + `label`）、`main`（`key` 同 id，工具栏四项：刷新 / 系统浏览器打开 / 复制链接 / 清除登录）；`[inert]` 出现时 blur + 隐藏；`ctx.layout.selectPanel(null)` 启动兜底
 - [ ] D 登录快照：采集（`did-finish-load` 后 1.5s、隐藏、切走、20s 轮询、手动；仅已登录时写；单值 64KB 跳过、总量 512KB 截断）；回填（每 lease 一次 + 注入后 reload + 防循环 + `stale` 标记）；站点表 `dsh-ai-webapps.sites.v1`
@@ -33,7 +33,8 @@
 
 ## 计划外变更（如实记录）
 
-- 无
+- 2026-11-26：A 顺带加入最小 `client.js` 探测骨架——`package.json` 的 `dsh.client` 必须有 client 入口才能安装；该文件只打印 `[aiwa]` 桥状态，不含面板逻辑（面板在 C，webview 在 B）。
+- 2026-11-26：`locale/*.json` 的 `meta.detail` 指向 `docs/plugin/DETAIL.md`（文本详情页）。dsh-doc 的 `plugin-details.md` 建议详情页只放一张配图、其余信息进 `meta.description`；本项目按已定稿设计保留文本详情页，功能/用法/限制同时写进 `meta.description`。
 
 ## 防影响承诺
 
