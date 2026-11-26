@@ -3,6 +3,11 @@
 > 格式：倒序，最新在最上；新条目插到本说明块紧下方。每条 ≤5 行：日期 ｜ 批次 ｜ 主题，加 2–3 条要点（完成/文件/设计变更/下一步）。
 > 会话结束协议追加，跨会话续接的唯一进度源。条数 >25 时，第 26 条及更早的整段剪切至 `process-archive.md` 顶部。
 
+## 2026-11-26 ｜ 收尾 ｜ M0-A/C 完成，暂停在 B 前
+- 验证：用户确认左栏 DeepSeek 行可见（C 真机通过）；主面板工具栏、插件页图标、页面 console 的 `[aiwa]` 日志未逐项核对
+- 状态：A/C 完成；F 安装 applied（`include:ai-webapps` active）；B/D/E/V 未做；计划 01 仍 🟡；最近提交 `cf437f9`
+- 下次开工顺序：B（`shell.overlay` 单例 + 占位几何跟随 + acquire/attach/loadURL + `render-process-gone` 重建 + `[inert]` blur/隐藏 + 卸载清理），随后 D 快照、E 设置页、V 六项验收
+
 ## 2026-11-26 ｜ 计划01 ｜ M0-C 左栏入口与主面板
 - 新增：`client.js` 246 行——`sidebar.panellist`（`ai-webapps:deepseek`，order 50，`label: () => t('panel')`）、`main` keyed 面板（工具栏四项 + 占位区 + 桥状态行）、`ctx.locale.register` zh/en、启动 `selectPanel(null)` 兜底（T13）
 - 取舍：`[inert]` blur/隐藏移到 B（C 阶段没有 guest）；刷新/系统浏览器动作留 `controller.onRefresh/onOpenExternal` 钩子给 B 覆盖
