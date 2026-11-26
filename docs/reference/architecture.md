@@ -40,8 +40,8 @@
 
 ## 数据与存储
 
-- `dsh-ai-webapps.sites.v1`（DSH 页面 localStorage）：站点定义 `{version, sites:[{id,name,url,order,enabled}]}`，V1 只有 DeepSeek，结构按多站设计。
-- `dsh-ai-webapps.snapshot.v1`（DSH 页面 localStorage）：按站点 id 存的登录快照 `{savedAt,url,localStorage:{…},cookie}`；采集时单值 >64KB 跳过、总量 >512KB 截断；**不含 IndexedDB**。
+- `dsh-ai-webapps.sites.v1`（DSH 页面 localStorage）：站点定义 `{version:1, sites:[{id,name,url,order,enabled}]}`，V1 只有 DeepSeek（`id: 'deepseek'`），结构按多站设计。
+- `dsh-ai-webapps.snapshot.v1`（DSH 页面 localStorage）：按站点 id 存的登录快照 `{version:1, sites:{deepseek:{savedAt,url,stale,truncated,skipped,cookie,localStorage:{…}}}}`；采集时单值 >64KB 跳过、总量 >512KB 截断；**不含 IndexedDB**（实测快照约 37KB）。
 - 采集时机：`did-finish-load` 后 1.5s、`visibilitychange→hidden`、面板切走、每 20s 轮询、设置页「立即保存」。仅在判定"已登录"时写入，避免坏快照覆盖。
 - 回填：每个 guest 生命周期内只回填一次；回填后仍落在登录路径或 token 键消失 → 快照标 `stale`，停止回填并在面板提示重登。
 - 分区：统一 workspace key `ai-webapps:shared`；默认内存分区（退出即丢），持久化完全由快照承担。

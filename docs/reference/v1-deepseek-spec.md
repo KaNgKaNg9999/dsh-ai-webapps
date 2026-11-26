@@ -18,7 +18,7 @@
 | T3 | 快照存储 | `dsh-app` 页面的 localStorage（不引入 Host 半区） |
 | T4 | 快照内容 | 全量 localStorage（单值 >64KB 跳过）+ 可读 cookie；**不含 IndexedDB** |
 | T5 | **宿主容器** | **`shell.overlay` 里的单例容器**（`position:fixed`，永不移动）；退路 body fixed |
-| T6 | 回填闪烁 | 接受一次极短"未登录闪" |
+| T6 | 回填闪烁 | 宿主在 guest 首次加载完成且回填落定前保持隐藏（显示加载卡片），不出现未登录闪（2026-11-26 重启实测后修订） |
 | T7 | 启动行为 | 不自动抢占主面板（见 T13） |
 | T8 | 工具栏 | 刷新 / 在系统浏览器打开 / 复制链接 / 清除登录 |
 | T9 | asar 补丁 | 不依赖；已还原官方原版 |
@@ -98,15 +98,16 @@ DeepSeek 对嵌入会话的风控与 Turnstile、换机重验、DSH 升级改协
 7. **焦点/弹窗**：MutationObserver 监听宿主外出现 `[inert]`（设置弹窗打开的特征）→ `webview.blur()` + 隐藏；消失后恢复。z-index 保持低于 body 级弹窗。
 8. **快捷键**：guest 内按键由 guest 自己处理，DSH 快捷键不会误触；面板内不新增全局快捷键（V1）。
 9. **加载只发一次**（2026-11-26 真机）：`dom-ready` 会在引导文档与站点文档各触发一次；目标 `loadURL` 只在引导文档触发一次，站点文档的 `dom-ready` 不得重放，否则每次加载都会中断自己、形成闪烁循环。`loadURL`/`did-fail-load` 的 `ERR_ABORTED (-3)` 是旧导航被重定向取代的良性错误，不按失败处理；仅当 2s 后仍停在 `about:blank#lease` 时补一次重试。
+10. **首次显示门控**（2026-11-26 重启实测后修订 T6）：guest 在「首次加载完成 + 回填落定（validated / invalid / failed）」前保持隐藏，宿主显示加载卡片；首次显示后，站内整页导航保持可见。这样重启回填时不会先露出未登录页再闪到聊天页。
 
 ---
 
 ## 5. 快照规则
 
 **采集**（仅"已登录"时写，避免坏快照覆盖好快照）：
-- 判定：guest 内 `localStorage` 存在 token 相关键（具体键名 M0 实测，代码里用"存在任一非空且 <64KB 的键 + URL 不在登录路径"作为宽松判定）；
+- 判定：guest 内 `localStorage` 存在 token 相关键（具体键名 M0 实测，代码里用"存在任一非空且 <64KB 的键 + URL 不在登录路径"作为宽松判定；2026-11-26 实测已登录时有 `userToken`，另有 `settingsJwt`、`__appKit_userInfo` 等）；
 - 时机：`did-finish-load` 后 1.5s、`visibilitychange→hidden`、面板切走、每 20s 轮询、设置页「立即保存」；
-- 内容：`{ savedAt, url, localStorage: {...跳过大值}, cookie: document.cookie }`；总量 >512KB 截断并记录。
+- 内容：`{ savedAt, url, localStorage: {...跳过大值}, cookie: document.cookie }`；总量 >512KB 截断并记录（实测快照约 37KB，未截断）。
 
 **回填**：
 - 条件：有快照、宿主页未标记 stale、本 guest 生命周期内未回填过、当前页面不是登录路径；
@@ -141,7 +142,7 @@ DeepSeek 对嵌入会话的风控与 Turnstile、换机重验、DSH 升级改协
 
 ## 8. M1 清单
 
-设置页交互完整化、locale（en/zh）、图标与 DETAIL、错误态文案、加载失败重试、按钮状态（复制成功 toast 等）。
+设置页交互完整化、locale（en/zh）、图标与 DETAIL、错误态文案、加载失败重试、按钮状态（复制成功 toast 等）；**加载卡视觉已提前完成（2026-11-26）**。
 
 ---
 
@@ -168,8 +169,8 @@ DeepSeek 对嵌入会话的风控与 Turnstile、换机重验、DSH 升级改协
 
 ## 10. 剩余未知（只剩真机项）
 
-- 桥实际调用：`acquire` / attach / `loadURL` / 崩溃重建、`executeJavaScript` 读写 guest storage；
+- 回填注入已重启验证（2026-11-26）；stale 判定与 `render-process-gone` 自动重建尚未触发；
 - `shell.overlay` 与 body 弹窗的层级关系（契约与运行态已回填，遮挡关系留 V）；`settings.section` 第三方注册；
-- Turnstile 是否放行；
+- Turnstile 是否放行（登录已由用户手动完成，未记录是否触发）；
 - 回填后 `check_device` 是否放行；
 - 选中态是否持久（已按 T13 兜底）。

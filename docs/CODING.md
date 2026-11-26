@@ -34,7 +34,7 @@
 - 所有注册（slot / listener / timer / lease / DOM 容器）必须成对释放，统一放在 `ctx.effect` 或 `apply` 内的清理函数里；插件重载不得留下孤儿 guest。
 - 文本走 `ctx.locale`（先 `zh` + `en` 两份字典），不把中文硬编码进组件；面板 id 用 `ai-webapps:<siteId>`，存储键用 `dsh-ai-webapps.<name>.v1`。
 - 日志统一前缀 `[aiwa]`；只打键名/状态/错误码，不打 token、cookie 值。
-- 单文件优先：V1 全部实现放在 `client.js` 内（约 600–900 行），模块化拆分等出现第二个站点再做。
+- 单文件优先：V1 全部实现放在 `client.js` 内（约 900–1300 行，当前 ~1150），模块化拆分等出现第二个站点再做。
 
 ## 5. 测试与门禁
 
