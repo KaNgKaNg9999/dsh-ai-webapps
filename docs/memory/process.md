@@ -3,6 +3,13 @@
 > 格式：倒序，最新在最上；新条目插到本说明块紧下方。每条 ≤5 行：日期 ｜ 批次 ｜ 主题，加 2–3 条要点（完成/文件/设计变更/下一步）。
 > 会话结束协议追加，跨会话续接的唯一进度源。条数 >25 时，第 26 条及更早的整段剪切至 `process-archive.md` 顶部。
 
+## 2026-11-27 ｜ 计划02 ｜ M1 五项验收全部通过（含 2 处修复）
+- 手段：`--remote-debugging-port=9222` + 新增 `tools/cdp-eval.mjs`（CDP 执行 JS/抓 console）；崩溃注入改用「外部杀 guest 渲染进程」，用 CPU 时间增量精确认进程
+- 结论：V5 通过（口径修正：只有设置弹窗与右键菜单能与 guest 同屏）；V1 通过（warn/error/前缀/站点日志全中）；V3 通过；V4 通过；V2 登录成功放行（无 Cloudflare Turnstile，仅站点自带的图片选择验证码），R5 不实现
+- 修复：`validateBackfill` 补 `login` 判据（坏 token 键仍存在会误判成功）；`maybeStart` 放行 `crashed`（面板切走时崩溃后永久卡死）+ 重建用尽的 `stopped` 文案与按钮
+- 副作用：`.dsh-pilot/` 截图会落进工作区，已加 `.gitignore`；清掉遗留键 `debug.v1`/`snapshot.backup.v1`；`cookie=209` 实为字符串长度非条数
+- 状态：`client.js` 已改待提交；下一步 commit → M1 余项（`node --test`、DETAIL 定稿）
+
 ## 2026-11-26 ｜ 计划02 ｜ M1 缺口验收清单落地（会话结束）
 - 新增 `docs/plans/02-M1-缺口验收清单.md`：执行序 V5 弹窗层级 → V1 console 转发 → V3 stale 降级 → V4 崩溃重建 → V2 Turnstile，每项含操作/通过判据/失败处置与结果记录表；README、spec §10 已交叉引用
 - 口径：下一会话按清单执行，有问题当场修并重验；崩溃注入首选 `chrome://crash`，被拦则转 `node --test` 合成状态机测试

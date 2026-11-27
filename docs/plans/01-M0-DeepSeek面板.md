@@ -24,7 +24,7 @@
 - [x] C 左栏与主面板注册：`sidebar.panellist`（图标组件 + `id='ai-webapps:deepseek'` + `label`）、`main`（`key` 同 id，工具栏四项：刷新 / 系统浏览器打开 / 复制链接 / 清除登录）；`ctx.layout.selectPanel(null)` 启动兜底 — 2026-11-26 完成；`[inert]` blur/隐藏挪到 B（C 阶段没有 guest 可 blur）；**真机：用户确认左栏 DeepSeek 行可见**（主面板工具栏与占位区未逐项核对）
 - [x] D 登录快照：采集（`did-finish-load` 后 1.5s、隐藏、切走、20s 轮询、手动；仅已登录时写；单值 64KB 跳过、总量 512KB 截断）；回填（每 lease 一次 + 注入后 reload + 防循环 + `stale` 标记）；站点表 `dsh-ai-webapps.sites.v1` — 2026-11-26 实现；采集真机通过（快照 37KB、25 键含 `userToken`、cookie 209、20s 轮询更新）；回填重启验证通过；首次显示门控真机确认无未登录闪
 - [x] E 设置页：`settings.section(id='ai-webapps')`，显示 URL、快照状态（键数/时间/是否 stale）、「立即保存」「清除已保存登录」— 2026-11-26 实现并真机验收通过：五张卡（面板位置/打开面板、站点地址+复制、登录快照（状态胶囊、保存时间、键数、cookie 条数、大小、跳过/截断、立即保存、清除）、桌面桥状态、已知限制）；保存按钮在面板未 ready 时禁用并写明原因；另注册 `settings.section.icon`（0.2.2 独立图标位）显示自绘鲸鱼图标
-- [ ] F 自检与安装：`node --check client.js` / `index.js`；`JSON.parse` 校验 manifest 与 locale；`install_bundle` 安装并在插件页确认行与图标 — 2026-11-26 自检与安装已完成（`application: applied`、行 `include:ai-webapps` active）；**左栏行已由用户确认可见**，插件页图标与页面 console 的 `[aiwa]` 日志尚未核对
+- [x] F 自检与安装：`node --check client.js` / `index.js`；`JSON.parse` 校验 manifest 与 locale；`install_bundle` 安装并在插件页确认行与图标 — 2026-11-26 自检与安装已完成（`application: applied`、行 `include:ai-webapps` active）；2026-11-27 补充核对：插件页「已安装插件」中可见 `DeepSeek 网页面板` 与鲸鱼图标，页面 console 的 `[aiwa]` 日志已由 V1 取证确认
 - [x] V M0 六项验收（见下）真机跑通并回填结果 — 2026-11-26 通过：1 面板渲染；2 站点加载（`/sign_in` → 登录后 `/`；`console-message` 转发未目视）；3 手动登录成功（Turnstile 细节未记录）；4 切面板不重载；5 采集（25 键含 `userToken`，快照 37KB）；6 退出→重启自动登录且不自动停在站点面板。缺口：2 的 console 转发、`render-process-gone` 重建未目视
 
 ## 不在范围

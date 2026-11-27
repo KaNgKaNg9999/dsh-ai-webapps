@@ -17,6 +17,7 @@
 | 测试 | M0 六项手工验收（见 `docs/plans/01-M0-DeepSeek面板.md`）；后续可加 `node --test` |
 | 构建 | 无（package 不含构建步骤） |
 | 静态检查 | `node --check client.js` 与 `node --check index.js` |
+| 真机取证 | `node tools/cdp-eval.mjs list｜eval "<表达式>"｜listen <秒> ["<触发>"]` —— 通过 CDP 在宿主渲染进程执行 JS、抓 console。**DSH 必须以 `--remote-debugging-port=9222` 启动**；打包版 `开发者工具` 菜单可点但打不开，这是唯一观测通道 |
 | 版本控制 | `git status` / `git log --oneline`（提交前先确认，见 §3） |
 
 ## 3. 分支与提交
