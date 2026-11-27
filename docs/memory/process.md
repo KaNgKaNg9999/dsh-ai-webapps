@@ -3,11 +3,11 @@
 > 格式：倒序，最新在最上；新条目插到本说明块紧下方。每条 ≤5 行：日期 ｜ 批次 ｜ 主题，加 2–3 条要点（完成/文件/设计变更/下一步）。
 > 会话结束协议追加，跨会话续接的唯一进度源。条数 >25 时，第 26 条及更早的整段剪切至 `process-archive.md` 顶部。
 
-## 2026-11-27 ｜ 计划05 ｜ 多站尝试放弃，回退 DeepSeek 单站
+## 2026-11-27 ｜ 计划05 ｜ 多站尝试放弃，回退单站并改从 GitHub 安装
 - P6.5-A 判定千问登录票据在 HttpOnly cookie（删票据对照即回未登录），插件内无解；多站（P1–P5）与 1.1.0 放弃
-- 回退：本地 main → origin/main `a8a0d1a`（V1 单站）；V2 的 14 个 commit 存本地分支 `archive/v2-multi-site`（未推）
-- 文档：新增 plans/05「多站点尝试与放弃」+ README/CHANGELOG/project.md/product-brief 备注；远端 main/v1.0.0 未受影响
-- 运行态回单站：左栏仅 DeepSeek、站点表 v1、DeepSeek 登录保留；`node --test` 41 绿；下一步待用户确认是否 commit 本批 docs
+- 回退：本地 main → origin/main `a8a0d1a`；V2 的 14 个 commit 存本地分支 `archive/v2-multi-site`（未推）
+- 文档：README 改为「DeepSeek 单站、不用来回切浏览器」；新增 plans/05「多站点尝试与放弃」；已推送 `c96fb98`
+- 安装：profile 由 `link:` 换成 GitHub pin `c96fb98`；已清空 `dsh-ai-webapps.sites.v1` / `.snapshot.v1`；待用户正常重启后登录一次
 
 ## 2026-11-27 ｜ 计划04 ｜ V1 残留收口（已收口）
 - 计划03：勾 A1（9222 实测关闭）、A3（stale 按单测+M1 证据等效覆盖）、A2（用户通读 DETAIL 六点全通）、删重复验收行
