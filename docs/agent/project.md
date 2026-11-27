@@ -8,7 +8,7 @@
 - 不是什么：不是通用浏览器；不是 API/模型接入替代方案；不改 DSH 应用本体；V1 不做多站与登录态跨机迁移。
 - 技术栈：纯 JS（无构建）DSH client bundle；React 由宿主 `window.__ModuleLoader__` 提供；无第三方依赖；依赖 DSH `0.2.2-rc.5` 的 Slot 契约与 `globalThis.dshDesktop.browser` 桥（`protocolVersion: 1`）。
 - 关键目录：`client.js`（Client 半区全部实现）｜`index.js`（Host 空壳）｜`cordis.patch.yml`（bundle 行）｜`locale/`｜`docs/`。
-- 命令：`install_bundle`（插件管理器安装本目录）/ 无 / M0 六项手工验收（后续 `node --test`）/ 无 / `node --check client.js`
+- 命令：`install_bundle`（插件管理器安装本目录）/ 无 / M0 六项手工验收 ／ 真机自动化取证（`node tools/cdp-eval.mjs`，**需带 `--remote-debugging-port=9222` 启动 DSH**，见 `docs/CODING.md` §2.1）/ 无 / `node --check client.js`
 - 分支/发布：主分支 `main`（2026-11-26 `git init`，无远端）；发布=本地目录安装，后续可发 npm 包。
 - 文档语言：中文。
 - 红线：不改 DSH 应用本体；不写入明文凭据。
@@ -43,6 +43,10 @@
 ## 二、开发中（Working）
 
 - **计划先行**：与用户沟通好后，先写 `docs/plans/NN-主题.md`（目标/清单/验收），确认后再动代码
+- **真机自动化验收前，先请用户重启**：需要「宿主渲染进程执行 JS / 读宿主 console」时，打包版 DSH 的开发者工具打不开，只能靠调试端口。**先告诉用户**执行下面这条命令重启 DSH，等用户重开会话再继续；**不要自己重启**（agent 就在该进程里，重启会中断会话）。屏幕点击/截图用 `dsh-pilot`，宿主 JS 用 `node tools/cdp-eval.mjs`，细则见 `docs/CODING.md` §2.1。
+  ```powershell
+  & "D:\software\DeepSeek Harness\DeepSeek Harness.exe" --remote-debugging-port=9222
+  ```
 - **就绪才开计划**：目标/范围/验收不齐时，先落发现计划（类型：发现），不写实施计划
 - **设计先行**：新模块先建 `docs/reference/<主题>.md` 骨架，再开发；偏离设计先改 reference
 - **小步可验证**：每步有可检验的结果；计划外变更如实记录

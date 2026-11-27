@@ -14,11 +14,35 @@
 |---|---|
 | 安装 | 通过 DSH 插件管理器 `install_bundle` 安装本目录（或 Plugins → Add plugin 选本地目录） |
 | 开发 | 无（纯 JS，无构建；改 `client.js` 后需重启 DSH 或刷新页面生效） |
-| 测试 | M0 六项手工验收（见 `docs/plans/01-M0-DeepSeek面板.md`）；后续可加 `node --test` |
+| 测试 | M0 六项手工验收（见 `docs/plans/01-M0-DeepSeek面板.md`）；真机自动化取证见 §2.1（**需带 `--remote-debugging-port=9222` 启动**）；后续可加 `node --test` |
 | 构建 | 无（package 不含构建步骤） |
 | 静态检查 | `node --check client.js` 与 `node --check index.js` |
-| 真机取证 | `node tools/cdp-eval.mjs list｜eval "<表达式>"｜listen <秒> ["<触发>"]` —— 通过 CDP 在宿主渲染进程执行 JS、抓 console。**DSH 必须以 `--remote-debugging-port=9222` 启动**；打包版 `开发者工具` 菜单可点但打不开，这是唯一观测通道 |
+| 真机取证 | `node tools/cdp-eval.mjs list｜eval "<表达式>"｜listen <秒> ["<触发>"]` —— 通过 CDP 在宿主渲染进程执行 JS、抓 console。前置条件与规则见 §2.1 |
 | 版本控制 | `git status` / `git log --oneline`（提交前先确认，见 §3） |
+
+### 2.1 真机自动化取证（需要宿主 JS 或 console 时）
+
+打包版 DSH 的「应用 → 开发者工具」**可点但不会打开任何窗口**（`Ctrl+Shift+I` 同样无反应），宿主渲染进程没有别的观测入口。凡是要在**宿主渲染进程执行 JS** 或**读宿主 console** 的验收，都必须带调试端口启动 DSH。
+
+前置：托盘彻底退出 DSH，然后用下面的命令启动（路径按本机实际安装位置）。
+
+```powershell
+& "D:\software\DeepSeek Harness\DeepSeek Harness.exe" --remote-debugging-port=9222
+```
+
+确认连上：
+
+```powershell
+node tools/cdp-eval.mjs list    # 应列出 type=page、url=dsh-app://app/
+node tools/cdp-eval.mjs eval "1+1"
+```
+
+**规则（重要）**
+
+1. ⚠️ **不要自己重启 DSH**：agent 本身跑在 DSH 进程里，重启会中断用户会话。必须先**告诉用户这条命令**，由用户执行；用户重启后重新打开会话再继续。
+2. 调试端口只对本次启动有效，不带参数正常启动即关闭。无后续取证需求时，建议下次正常启动。
+3. 调试端口等于让本机任意进程可以驱动渲染进程，**属临时手段**，只用于验收取证，不要常开在长期实例上。
+4. 分工：**屏幕点击/截图**用 `dsh-pilot`；**宿主 JS 与 console** 用 `tools/cdp-eval.mjs`。两者常配合使用（例如用 CDP 触发、用截图看结果）。
 
 ## 3. 分支与提交
 
