@@ -28,7 +28,7 @@
         ├─ dom-ready：快照探测 → 需要则注入 + reload（每 lease 仅一次）
         ├─ 事件：console-message / did-fail-load / render-process-gone / page-title-updated
         └─ 崩溃：release 旧 lease → 重新 acquire → 重建 webview
-[设置] settings.section(id='ai-webapps')：面板位置/打开面板、站点 URL（只读+复制）、登录快照状态与「立即保存」「清除已保存登录」、桥状态、已知限制
+[设置] settings.section(id='ai-webapps')：面板位置/打开面板、站点 URL（只读+复制）、登录快照状态与「立即保存」「清除已保存登录」、桌面桥状态、诊断（状态摘要 + 最近日志 + 复制/清空）、已知限制
 ```
 
 关键约束（已从 DSH 源码确认）：
@@ -46,10 +46,21 @@
 - 回填：每个 guest 生命周期内只回填一次；回填后仍落在登录路径或 token 键消失 → 快照标 `stale`，停止回填并在面板提示重登。
 - 分区：统一 workspace key `ai-webapps:shared`；默认内存分区（退出即丢），持久化完全由快照承担。
 
+## 可观测性（诊断）
+
+打包版宿主 DevTools 打不开（`应用 → 开发者工具` 可点但无窗口，`Ctrl+Shift+I` 无反应），`[aiwa]` 转发日志因此「正确但没人看得到」。V1 的补救是页面内诊断，不引入任何 Host 能力。
+
+- **缓冲**：内存环形队列 200 条，`{ ts, level, scope, text }`，`scope` 为 `host` 或 `guest`；超限丢最旧，不落盘、不跨刷新保留。
+- **唯一入口**：内部 `log(level, fmt, …args)` 同时写 console 与缓冲；插件自身的日志一律经它，guest 的 `console-message` 也经它（`scope='guest'`）。格式仍是 `[aiwa] …` / `[aiwa][guest] …`。
+- **脱敏（出口前执行）**：URL query 值 → `***`；`token` / `userToken` / `password` / `secret` / `api_key` 等键值 → `***`；`Authorization:` / `Cookie:` 头整行值 → `***`；`user_unique_id` / `web_id` / 设备 id 与任何 UUID（含嵌在键名里的）→ `***`；单行超 240 字符截断。我方日志里的长度类数字（如 `cookie=209`）保留，便于排障。
+- **展示**：设置页「诊断」卡——状态摘要（阶段 / lease 前 8 位 / 站点主机名 / 崩溃次数 / 回填状态 / 快照状态与键数）+ 最近 100 条日志（等宽、可滚动、按级别着色）+「复制诊断信息」「清空」。
+- **明确不做**：写日志文件（D1 决定 A，见 `docs/plans/03-V1收尾与发布.md`）；常开 guest DevTools；过滤站点自身日志（转发原样透传，站点标识会出现在诊断里，属已知限制）。
+- **生命周期**：随 controller 创建、随插件卸载丢弃；清空只清内存。
+
 ## 集成与部署
 
-- 集成：作为 bundle 安装进 profile（`install_bundle` 或 Plugins → Add plugin 选目录）；随 profile 启动加载 Client 半区。
-- 部署：本地目录安装（`link:`），无构建步骤；后续可发布 npm 包（需校验 `files` 与实际打包清单）。
+- 集成：作为 bundle 安装进 profile（`install_bundle` / **Plugins → Add plugin**）；随 profile 启动加载 Client 半区。
+- 部署：本地目录（`link:`）或 GitHub 仓库（`git+https://…#<commit>`）；后者不需要 npm 发布，但插件页没有 registry 的版本列表与更新角标，升级靠重新安装或索引里的 git 条目。
 - 兼容：非 Desktop profile / 桥缺失 / `protocolVersion` 不符时，面板显示"需要桌面端"或降级提示，不白屏、不抛错。
 
 ## 关键决策（含被否方案）
@@ -72,7 +83,7 @@
 - guest 权限全拒：下载、麦克风/摄像头、通知、`navigator.clipboard.readText`、站点 `alert/confirm` 不可用。
 - 快照为明文 token，存于本机页面 localStorage（等同浏览器 Cookies 文件）；同域其他插件理论上可读 → 设置页提供清除。
 - 同一分区下同域多站会共享 cookie 罐（V1 单站无实际影响）。
-- 打包版 guest 的 DevTools 关闭 → 排障依赖 `console-message` 转发（前缀 `[aiwa]`）。
+- 打包版 guest 的 DevTools 关闭 → 排障依赖 `console-message` 转发（前缀 `[aiwa]`）与设置页诊断卡（见「可观测性」）。
 
 ## 未决问题
 

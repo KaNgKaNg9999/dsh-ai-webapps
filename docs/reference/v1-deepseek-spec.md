@@ -181,10 +181,30 @@ DeepSeek 对嵌入会话的风控与 Turnstile、换机重验、DSH 升级改协
 | V5 弹窗层级 | **通过（口径修正）**。设置弹窗与会话右键菜单均完整压在 guest 之上且可交互，R1/R4 假设成立。本版本**能与 guest 同屏的浮层只有这两类**（无命令面板、会话无删除入口，插件详情与 Markdown 预览是面板内页面，打开时 guest 不在屏上） |
 | V2 Turnstile | **无需 R5**。用户完成真实登录并进入聊天页。**未出现 Cloudflare Turnstile**；站点侧的人机验证是**发送验证码时的图片选择验证码**（站点自带、非 Cloudflare），在 Electron 内正常通过 → R5（UA 覆盖开关）**不实现** |
 
-### 仍然是未知 / 待办
+### 收尾后已闭环（2026-11-27）
 
-- **排障通道（重要，仍未解决）**：打包版宿主 DevTools 打不开（`应用 → 开发者工具` 可点但无窗口，`Ctrl+Shift+I` 无反应，无 CDP 端口）。即 R10 的转发虽正确，但**人看不到**。目前靠 `tools/cdp-eval.mjs`（需以 `--remote-debugging-port=9222` 启动）临时取证。产品化建议：设置页内嵌「最近 N 条 `[aiwa]` 日志 + guest 状态」面板，或由 Host 半区写一份滚动日志文件。
-- **回填后 `check_device` 是否放行**：未单独取证（本次重启/崩溃重建后均能正常进聊天页，间接说明放行）。
-- **选中态是否持久**：仍按 T13 兜底（启动强制回会话）。
-- **数据口径勘误（2026-11-27）**：历史记录里的「cookie 209」实为快照中 cookie **字符串长度**，不是条数；实际可读 cookie 只有 2 条（`smidV2`、`.thumbcache_…`）。登录态主体是 localStorage 的 `userToken`。
-- **`[aiwa][guest]` 会透传站点标识**：转发是原样透传，站点日志里的 `user_unique_id` / `web_id` 也会进宿主 console；若将来实现常开调试面板，应只保留我方 `[aiwa]` 前缀的行。
+- **排障通道**：已由设置页「诊断」卡解决（见 §11）。打包版依旧没有 DevTools，但状态与最近日志在应用内可见、可复制；需要「执行 JS」的取证仍用 `tools/cdp-eval.mjs`（带端口的临时手段）。
+- **回填后 `check_device` 放行**：**已直接取证**。用 CDP 在崩溃重建后的新 guest 上抓网络，得到 `POST /api/v0/users/auth_token/check_device → 200`、响应 `{"code":0,"msg":""}`；同批 `/api/v0/chat/status`、`chat/create_pow_challenge`、`chat_session/create` 也都是 200 + `code:0`，页面回到聊天页。结论：设备校验接受本机快照恢复的会话。
+- **选中态是否持久**：**不持久**。DSH `@deepseek-ai/dsh-client-ui-layout` 官方说明「Layout state resets on reload」，本机 localStorage 也没有布局/面板选中键。因此 T13 的启动守卫在真实重启里不会命中，保留它作为防御（插件 HMR 重建、宿主将来改变持久化策略时仍能生效）。
+- **数据口径勘误**：历史记录里的「cookie 209」实为快照中 cookie **字符串长度**，不是条数；实际可读 cookie 只有 2 条（`smidV2`、`.thumbcache_…`）。登录态主体是 localStorage 的 `userToken`。
+- **`[aiwa][guest]` 站点标识**：转发仍是原样透传，但诊断缓冲在入库前会把 `user_unique_id` / `web_id` / 设备 id 以及**嵌在键名里的 UUID**（如 `__appKit_..._<uuid>_userStorage`）打成 `***`，所以面板与「复制诊断信息」不再带稳定标识。
+
+---
+
+## 11. 日志与诊断（2026-11-27 实现）
+
+**背景**：§10 的「排障通道」是 V1 唯一没关掉的运维缺口——转发正确，但打包版没有 DevTools 可看。已按 `plans/03` D1=A 落地为页面内诊断，不引入 Host 文件日志。
+
+**规则**
+
+- 环形缓冲 200 条，`{ts, level, scope, text}`；`scope='host'` 是我方日志，`scope='guest'` 来自 `console-message` 转发（级别 2→warn、3→error，其余 log）。
+- 插件内所有日志走同一个 `log()` 入口（同时写 console 与缓冲），前缀仍是 `[aiwa]` / `[aiwa][guest]`。
+- **脱敏**在入缓冲前执行：URL query 值、`token|userToken|password|secret|api_key` 等键值、`Authorization:` / `Cookie:` 头整行值 → `***`；`user_unique_id` / `web_id` / 设备 id 以及任何 UUID（含嵌在键名里的）→ `***`；单行 >240 字符截断。长度类数字（如 `cookie=209`）保留以便排障。凭据与稳定标识永不进缓冲，也不进「复制诊断信息」。
+- 设置页新增「诊断」卡：状态摘要（阶段 / lease 前 8 位 / 主机名 / 崩溃次数 / 回填状态 / 快照状态与键数）+ 最近 100 条 + 复制 / 清空。
+- 只读：不碰 lease、不触发采集、不写 localStorage。
+
+**边界**
+
+- 内存态，DSH 重启即丢；因此不能替代「崩溃前的历史」，也不追求跨会话留档（那是 Host 文件日志的职责，V1 不做）。
+- guest 日志原样透传，但稳定标识已在入库前打码（见规则）；面板只在用户主动打开设置时可见，不常开、不外传。
+- 需要「在渲染进程执行 JS」的取证（如 `check_device` 请求观察）仍用 `tools/cdp-eval.mjs`；诊断面板只解决「看得到日志与状态」。

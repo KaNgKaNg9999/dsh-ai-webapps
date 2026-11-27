@@ -26,6 +26,142 @@ window.__ModuleLoader__.load({
     const HIDDEN_TRANSFORM = 'translateX(-200vw)';
     const CRASH_RESTART_DELAY_MS = 600;
     const MAX_CRASH_RESTARTS = 3;
+    const LOG_LIMIT = 200;
+    const LOG_SHOW = 100;
+    const LOG_LINE_MAX = 240;
+    const LOG_HEADER_SECRET = /(^|\n)([ \t]*(?:authorization|proxy-authorization|set-cookie|cookie)[ \t]*:[ \t]*)[^\n]*/gi;
+    const LOG_SENSITIVE = /\b(token|userToken|access[_-]?token|refresh[_-]?token|password|secret|api[_-]?key|session[_-]?id|user[_-]?unique[_-]?id|web[_-]?id|device[_-]?id)\b(["']?\s*[=:]\s*["']?)([^"'\s,;&]+)/gi;
+    const LOG_QUERY_PAIR = /([?&][\w.-]+=)[^&\s]+/g;
+    const LOG_UUID = /(?<![0-9a-f])[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![0-9a-f])/gi;
+
+    /**
+     * 诊断用的脱敏：URL query 值、敏感键值与 Authorization/Cookie 头打码；UUID（含嵌在键名里的用户标识）打码；过长行截断。
+     * 只作用于内存缓冲与复制出口，console 输出保持原样。
+     */
+    function redactLog(value) {
+      const text = typeof value === 'string' ? value : String(value);
+      const masked = text
+        .replace(LOG_HEADER_SECRET, (match, lead, prefix) => lead + prefix + '***')
+        .replace(LOG_QUERY_PAIR, '$1***')
+        .replace(LOG_SENSITIVE, (match, key, separator) => key + separator + '***')
+        .replace(LOG_UUID, '***');
+      return masked.length > LOG_LINE_MAX ? masked.slice(0, LOG_LINE_MAX) + '…' : masked;
+    }
+
+    /** 环形日志缓冲：内存态，随插件卸载丢弃；条数上限之外丢最旧。 */
+    function createLogRing(limit) {
+      const items = [];
+      return {
+        push(level, scope, text) {
+          items.push({ ts: Date.now(), level, scope, text: redactLog(text) });
+          if (items.length > limit) items.splice(0, items.length - limit);
+        },
+        list(count) {
+          const from = typeof count === 'number' && count > 0 ? Math.max(0, items.length - count) : 0;
+          return items.slice(from);
+        },
+        clear() {
+          items.length = 0;
+        },
+      };
+    }
+
+    const logRing = createLogRing(LOG_LIMIT);
+
+    /** 把 fmt + args 拼成一行；支持 %s/%d/%i/%f/%o/%O/%% 与 Error/对象。 */
+    function stringifyLogArg(value) {
+      if (typeof value === 'string') return value;
+      if (value instanceof Error) return value.message;
+      if (value === undefined) return 'undefined';
+      if (value === null) return 'null';
+      try {
+        return typeof value === 'object' ? JSON.stringify(value) : String(value);
+      } catch (error) {
+        return String(value);
+      }
+    }
+
+    function formatLog(fmt, args) {
+      if (typeof fmt !== 'string') return [fmt].concat(args).map(stringifyLogArg).join(' ');
+      if (!args.length) return fmt;
+      let index = 0;
+      const text = fmt.replace(/%[sdifOo%]/g, (token) => {
+        if (token === '%%') return '%';
+        if (index >= args.length) return token;
+        return stringifyLogArg(args[index++]);
+      });
+      if (index >= args.length) return text;
+      return text + ' ' + args.slice(index).map(stringifyLogArg).join(' ');
+    }
+
+    /**
+     * 插件内唯一日志入口：同时写 console 与环形缓冲。
+     * 传入的文案已带 `[aiwa]` 前缀时不再重复添加；`[aiwa][guest]` 记为 guest 来源。
+     */
+    function log(level, fmt, ...args) {
+      let text = formatLog(fmt, args);
+      if (text.indexOf('[aiwa]') !== 0) text = '[aiwa] ' + text;
+      const scope = text.indexOf('[aiwa][guest]') === 0 ? 'guest' : 'host';
+      const method = level === 'warn' ? 'warn' : level === 'error' ? 'error' : 'log';
+      try {
+        const write = console[method];
+        if (typeof write === 'function') write.call(console, text);
+      } catch (error) {
+        /* console 不可用时只留缓冲 */
+      }
+      logRing.push(method, scope, text);
+    }
+
+    function formatClock(ts) {
+      const date = new Date(ts);
+      const pad = (value) => String(value).padStart(2, '0');
+      return pad(date.getHours()) + ':' + pad(date.getMinutes()) + ':' + pad(date.getSeconds());
+    }
+
+    /** 快照里 cookie 的条数（按 `;` 分段，空段不算）。 */
+    function countCookies(cookie) {
+      if (typeof cookie !== 'string' || cookie === '') return 0;
+      return cookie.split(';').filter((part) => part.trim() !== '').length;
+    }
+
+    /** 回填校验判定：有 token 且不在登录路径才算恢复成功。 */
+    function probeVerdict(probe) {
+      return probe && probe.token && !probe.login ? 'valid' : 'stale';
+    }
+
+    /** 有 token 却仍在登录路径：站点可能还在跳转，给一次复核机会。 */
+    function needsProbeRetry(probe) {
+      return !!(probe && probe.token && probe.login);
+    }
+
+    /** 崩溃后是否重建：不可见/已释放时跳过，超过上限则停手。 */
+    function decideCrashRestart({ disposed, active, suspended, crashes, max }) {
+      if (disposed || !active || suspended) return 'skip';
+      return crashes > max ? 'stop' : 'restart';
+    }
+
+    /** maybeStart 的门（M1 修复的 `crashed` 放行与重建上限都在这里）。 */
+    function shouldStart({ disposed, starting, webview, phase, active, suspended, hasRect, bridgeReady, crashes, max }) {
+      if (disposed || starting || webview) return 'skip';
+      if (phase !== 'idle' && phase !== 'crashed') return 'skip';
+      if (!active || suspended || !hasRect) return 'skip';
+      if (!bridgeReady) return 'unavailable';
+      if (phase === 'crashed' && crashes > max) return 'stop';
+      return 'start';
+    }
+
+    /** 复制诊断信息：只含状态、键数与已脱敏日志，不含任何凭据值。 */
+    function buildDiagnosticReport(diag, entries) {
+      const lines = ['[aiwa] diagnostics'];
+      lines.push('phase=' + diag.phase + ' lease=' + (diag.lease || '-') + ' host=' + (diag.host || '-')
+        + ' crashes=' + String(diag.crashes) + ' backfill=' + diag.backfill + ' bridge=' + diag.bridge);
+      lines.push('snapshot=' + (diag.hasSnapshot ? (diag.stale ? 'stale' : 'valid') : 'none')
+        + ' keys=' + String(diag.keys) + ' savedAt='
+        + (diag.savedAt ? new Date(diag.savedAt).toISOString() : '-'));
+      lines.push('--- logs (last ' + String(entries.length) + ') ---');
+      for (const entry of entries) lines.push(formatClock(entry.ts) + ' [' + entry.level + '] ' + entry.text);
+      return lines.join('\n');
+    }
 
     const zh = {
       panel: 'DeepSeek',
@@ -44,7 +180,7 @@ window.__ModuleLoader__.load({
       restoring: '正在恢复登录…',
       stepConnect: '连接网页容器',
       stepRestore: '恢复登录',
-      stepLoad: '加载界面',
+      stepLoad: '加载页面',
       failed: '页面加载失败',
       crashed: '页面已崩溃，正在重建…',
       crashedStopped: '自动重建已停止，请手动刷新',
@@ -77,15 +213,27 @@ window.__ModuleLoader__.load({
       settingsSavedOk: '已保存新的登录快照',
       settingsNeedSignin: '未能保存：先在面板里完成登录',
       settingsPanelClosed: '未能保存：先打开 DeepSeek 面板加载一次',
+      settingsPanelHint: '打开 DeepSeek 面板加载一次后即可立即保存。',
       settingsCleared: '已清除本机保存的登录',
       settingsBridge: '桌面桥',
       settingsBridgeOk: '可用',
       settingsBridgeDown: '不可用',
       settingsLimits: '已知限制',
       settingsLimit1: '仅 DSH 桌面端可用；每台机器各自登录一次。',
-      settingsLimit2: '下载、麦克风/摄像头、通知、剪贴板读取与站点弹窗不可用。',
+      settingsLimit2: '下载、麦克风/摄像头、通知、剪贴板读取不可用；站点弹窗改在系统浏览器打开。',
       settingsLimit3: '快照以明文存于本机页面存储（等同浏览器 Cookie 文件），可在此清除。',
-      settingsLimit4: 'guest 开发者工具在打包版关闭，排障依赖 [aiwa] console 日志。',
+      settingsLimit4: '内嵌页面的开发者工具在打包版关闭；「诊断」卡可看最近日志与状态。',
+      settingsDiagnostics: '诊断',
+      diagLease: '容器 lease',
+      diagHost: '站点主机',
+      diagBackfill: '登录回填',
+      diagCrashes: '崩溃次数',
+      diagSnapshotState: '快照状态',
+      diagCopy: '复制诊断信息',
+      diagCopied: '诊断信息已复制',
+      diagClear: '清空日志',
+      diagCleared: '日志已清空',
+      diagEmpty: '还没有日志；打开 DeepSeek 面板后会记录加载、回填与崩溃事件。',
       yes: '是',
       no: '否',
     };
@@ -107,7 +255,7 @@ window.__ModuleLoader__.load({
       restoring: 'Restoring sign-in…',
       stepConnect: 'Connecting',
       stepRestore: 'Restore sign-in',
-      stepLoad: 'Load interface',
+      stepLoad: 'Load page',
       failed: 'The page failed to load',
       crashed: 'The page crashed; rebuilding…',
       crashedStopped: 'Automatic rebuild stopped; reload manually',
@@ -120,10 +268,10 @@ window.__ModuleLoader__.load({
       settingsTitle: 'DeepSeek web panel',
       settingsDesc: 'Embeds the DeepSeek web app in the main panel: switching panels never reloads it, and one sign-in survives restarts on this machine.',
       settingsOpen: 'Open panel',
-      settingsTarget: 'Location',
+      settingsTarget: 'Panel location',
       settingsTargetValue: 'Sidebar "DeepSeek" row → main panel',
       settingsSite: 'Site',
-      settingsUrl: 'Address',
+      settingsUrl: 'URL',
       settingsCopy: 'Copy address',
       settingsSnapshot: 'Saved sign-in',
       settingsStatusSaved: 'Saved',
@@ -131,7 +279,7 @@ window.__ModuleLoader__.load({
       settingsStatusStale: 'Expired',
       settingsSavedAt: 'Saved at',
       settingsKeys: 'localStorage keys',
-      settingsCookie: 'Cookies',
+      settingsCookie: 'Cookie count',
       settingsSize: 'Snapshot size',
       settingsSkipped: 'Skipped large values',
       settingsTruncated: 'Truncated',
@@ -140,15 +288,27 @@ window.__ModuleLoader__.load({
       settingsSavedOk: 'Saved a fresh sign-in snapshot',
       settingsNeedSignin: 'Not saved: sign in inside the panel first',
       settingsPanelClosed: 'Not saved: open the DeepSeek panel once to load it',
+      settingsPanelHint: 'Open the DeepSeek panel once; Save now becomes available after it loads.',
       settingsCleared: 'Saved sign-in cleared on this machine',
       settingsBridge: 'Desktop bridge',
       settingsBridgeOk: 'available',
       settingsBridgeDown: 'unavailable',
       settingsLimits: 'Known limits',
       settingsLimit1: 'Desktop only; sign in once per machine.',
-      settingsLimit2: 'Downloads, mic/camera, notifications, clipboard reads and site dialogs are unavailable.',
+      settingsLimit2: 'Downloads, mic/camera, notifications and clipboard reads are unavailable; site popups open in the system browser.',
       settingsLimit3: 'The snapshot is plain text in this machine\'s page storage (like a browser cookie file); clear it here.',
-      settingsLimit4: 'Guest devTools are off in packaged builds; diagnosis relies on the [aiwa] console log.',
+      settingsLimit4: 'The embedded page has no devTools in packaged builds; the Diagnostics card shows recent logs and state.',
+      settingsDiagnostics: 'Diagnostics',
+      diagLease: 'Lease',
+      diagHost: 'Site host',
+      diagBackfill: 'Backfill',
+      diagCrashes: 'Crashes',
+      diagSnapshotState: 'Snapshot',
+      diagCopy: 'Copy diagnostics',
+      diagCopied: 'Diagnostics copied',
+      diagClear: 'Clear logs',
+      diagCleared: 'Logs cleared',
+      diagEmpty: 'No logs yet. Opening the DeepSeek panel records load, backfill, and crash events.',
       yes: 'yes',
       no: 'no',
     };
@@ -162,6 +322,7 @@ window.__ModuleLoader__.load({
       '.aiwa-title{font-size:13px;font-weight:500;color:var(--dsw-alias-label-primary);white-space:nowrap}',
       '.aiwa-spacer{flex:1}',
       '.aiwa-toast{font-size:12px;line-height:20px;color:var(--dsw-alias-label-secondary);white-space:nowrap}',
+      '.aiwa-toast[data-tone="error"]{color:var(--dsw-alias-state-error-primary)}',
       '.aiwa-notice{font-size:12px;line-height:20px;color:var(--dsw-alias-state-warn-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:360px}',
       '.aiwa-btn{font:inherit;font-size:12px;line-height:20px;padding:3px 10px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;white-space:nowrap}',
       '.aiwa-btn:hover{background:color-mix(in srgb,var(--dsw-alias-label-primary) 6%,transparent);color:var(--dsw-alias-label-primary)}',
@@ -218,6 +379,7 @@ window.__ModuleLoader__.load({
       '.aiwa-sec-mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px}',
       '.aiwa-sec-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}',
       '.aiwa-sec-note{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}',
+      '.aiwa-sec-note[data-tone="error"]{color:var(--dsw-alias-state-error-primary)}',
       '.aiwa-pill{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;line-height:18px;padding:1px 8px;border-radius:999px;border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary)}',
       '.aiwa-pill[data-tone="ok"]{color:var(--dsw-alias-state-success-primary);border-color:color-mix(in srgb,var(--dsw-alias-state-success-primary) 40%,var(--dsw-alias-border-l2))}',
       '.aiwa-pill[data-tone="warn"]{color:var(--dsw-alias-state-warn-primary);border-color:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 40%,var(--dsw-alias-border-l2))}',
@@ -225,6 +387,13 @@ window.__ModuleLoader__.load({
       '.aiwa-sec-list{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;font-size:12.5px;line-height:19px;color:var(--dsw-alias-label-secondary)}',
       '.aiwa-btn[disabled]{opacity:.5;cursor:default}',
       '.aiwa-btn[disabled]:hover{background:transparent;color:var(--dsw-alias-label-secondary)}',
+      // 诊断卡（plans/03 T1）：只读日志视图。
+      '.aiwa-diag-logs{margin-top:2px;max-height:220px;overflow:auto;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:color-mix(in srgb,var(--dsw-alias-bg-base) 70%,transparent);padding:6px 8px;display:flex;flex-direction:column;gap:2px}',
+      '.aiwa-diag-line{display:flex;gap:8px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.5px;line-height:16px;color:var(--dsw-alias-label-secondary);white-space:pre-wrap;word-break:break-word}',
+      '.aiwa-diag-line[data-level="warn"]{color:var(--dsw-alias-state-warn-primary)}',
+      '.aiwa-diag-line[data-level="error"]{color:var(--dsw-alias-state-error-primary)}',
+      '.aiwa-diag-time{flex:none;color:var(--dsw-alias-label-tertiary)}',
+      '.aiwa-diag-text{min-width:0}',
     ].join('');
 
     /**
@@ -349,7 +518,7 @@ window.__ModuleLoader__.load({
         }
         localStorage.setItem(SITES_KEY, JSON.stringify({ version: 1, sites: [SITE_DEF] }));
       } catch (error) {
-        console.warn('[aiwa] sites table unavailable', error && error.message);
+        log('warn', '[aiwa] sites table unavailable', error && error.message);
       }
     }
 
@@ -361,7 +530,7 @@ window.__ModuleLoader__.load({
         const site = parsed && parsed.sites ? parsed.sites[SITE_ID] : null;
         return site && typeof site === 'object' ? site : null;
       } catch (error) {
-        console.warn('[aiwa] snapshot unreadable', error && error.message);
+        log('warn', '[aiwa] snapshot unreadable', error && error.message);
         return null;
       }
     }
@@ -384,7 +553,7 @@ window.__ModuleLoader__.load({
         localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(root));
         return true;
       } catch (error) {
-        console.warn('[aiwa] snapshot write failed', error && error.message);
+        log('warn', '[aiwa] snapshot write failed', error && error.message);
         return false;
       }
     }
@@ -394,7 +563,7 @@ window.__ModuleLoader__.load({
       if (!site) return false;
       if (site.stale === true) return true;
       const ok = writeSnapshotSite(Object.assign({}, site, { stale: true }));
-      if (ok) console.warn('[aiwa] snapshot marked stale; sign-in required again');
+      if (ok) log('warn', '[aiwa] snapshot marked stale; sign-in required again');
       return ok;
     }
 
@@ -446,7 +615,7 @@ window.__ModuleLoader__.load({
           try {
             listener();
           } catch (error) {
-            console.warn('[aiwa] host listener failed', error && error.message);
+            log('warn', '[aiwa] host listener failed', error && error.message);
           }
         }
         // 阶段变化会改变显隐（starting→loading→ready），几何必须跟着状态走。
@@ -464,6 +633,50 @@ window.__ModuleLoader__.load({
         return state;
       }
 
+      /** 诊断摘要：只有状态、主机名、计数与键名数量，不含任何值。 */
+      function diagnostics() {
+        const snapshot = readSnapshotSite();
+        const stored = snapshot && snapshot.localStorage && typeof snapshot.localStorage === 'object'
+          ? snapshot.localStorage : {};
+        let host = '';
+        try {
+          if (webview && typeof webview.getURL === 'function') host = new URL(webview.getURL()).host;
+        } catch (error) {
+          host = '';
+        }
+        if (!host && snapshot && typeof snapshot.url === 'string') {
+          try {
+            host = new URL(snapshot.url).host;
+          } catch (error) {
+            host = '';
+          }
+        }
+        return {
+          phase: state.phase,
+          notice: state.notice,
+          stopped: state.stopped === true,
+          crashes,
+          suspended: suspended === true,
+          lease: lease ? String(lease).slice(0, 8) : '',
+          host,
+          backfill,
+          hasSnapshot: !!snapshot,
+          stale: !!(snapshot && snapshot.stale === true),
+          keys: Object.keys(stored).length,
+          savedAt: snapshot && typeof snapshot.savedAt === 'number' ? snapshot.savedAt : 0,
+          bridge: bridgeInfo.status,
+        };
+      }
+
+      /** 最近日志（默认全部，最多 LOG_LIMIT 条）；entries 已脱敏。 */
+      function logEntries(count) {
+        return logRing.list(count);
+      }
+
+      function clearLogs() {
+        logRing.clear();
+      }
+
       async function runInGuest(script) {
         const element = webview;
         if (!element) return null;
@@ -472,7 +685,7 @@ window.__ModuleLoader__.load({
           if (typeof raw !== 'string') return null;
           return JSON.parse(raw);
         } catch (error) {
-          console.warn('[aiwa] guest script failed', error && error.message);
+          log('warn', '[aiwa] guest script failed', error && error.message);
           return null;
         }
       }
@@ -505,12 +718,12 @@ window.__ModuleLoader__.load({
           const data = await runInGuest(GUEST_COLLECT_SCRIPT);
           if (!data || webview !== element) return null;
           if (data.login) {
-            console.log('[aiwa] snapshot skipped; guest is on the sign-in path');
+            log('log', '[aiwa] snapshot skipped; guest is on the sign-in path');
             return null;
           }
           const existing = readSnapshotSite();
           if (!data.token && existing) {
-            console.log('[aiwa] snapshot skipped; no token key in the guest');
+            log('log', '[aiwa] snapshot skipped; no token key in the guest');
             return null;
           }
           if (!data.token && (!data.keys || data.keys.length === 0)) return null;
@@ -524,7 +737,7 @@ window.__ModuleLoader__.load({
             localStorage: data.entries || {},
           };
           if (!writeSnapshotSite(site)) return null;
-          console.log('[aiwa] snapshot saved; keys=%s cookie=%d truncated=%s skipped=%d',
+          log('log', '[aiwa] snapshot saved; keys=%s cookie=%d truncated=%s skipped=%d',
             Object.keys(site.localStorage).join(','), site.cookie.length, site.truncated, site.skipped);
           if (state.notice || !state.hasSnapshot) emit({ notice: null, hasSnapshot: true });
           return site;
@@ -536,9 +749,9 @@ window.__ModuleLoader__.load({
       function clearSnapshot() {
         try {
           localStorage.removeItem(SNAPSHOT_KEY);
-          console.log('[aiwa] snapshot cleared');
+          log('log', '[aiwa] snapshot cleared');
         } catch (error) {
-          console.warn('[aiwa] clear snapshot failed', error && error.message);
+          log('warn', '[aiwa] clear snapshot failed', error && error.message);
         }
         emit({ hasSnapshot: false, notice: null });
       }
@@ -572,24 +785,23 @@ window.__ModuleLoader__.load({
         const element = webview;
         let probe = await runInGuest(GUEST_PROBE_SCRIPT);
         if (!probe || webview !== element) return;
-        // 有 token 却仍停在登录路径：站点可能还在跳转，再给一次机会，避免误判有效会话。
-        if (probe.token && probe.login) {
+        if (needsProbeRetry(probe)) {
           await new Promise((resolve) => setTimeout(resolve, 1000));
           if (webview !== element) return;
           probe = await runInGuest(GUEST_PROBE_SCRIPT);
           if (!probe || webview !== element) return;
         }
-        if (!probe.token || probe.login) {
+        if (probeVerdict(probe) === 'stale') {
           backfill = 'invalid';
           markSnapshotStale();
           emit({ notice: 'loginStale', restoring: false });
-          console.warn('[aiwa] backfill did not restore the sign-in (%s); snapshot marked stale',
+          log('warn', '[aiwa] backfill did not restore the sign-in (%s); snapshot marked stale',
             probe.token ? 'still on ' + (probe.path || 'the sign-in path') : 'token key missing');
           finishBackfill();
           return;
         }
         backfill = 'validated';
-        console.log('[aiwa] backfill restored sign-in; keys=%s', (probe.keys || []).join(','));
+        log('log', '[aiwa] backfill restored sign-in; keys=%s', (probe.keys || []).join(','));
         finishBackfill();
         void collectSnapshot();
       }
@@ -619,7 +831,7 @@ window.__ModuleLoader__.load({
         }
         if (!probe.login && probe.token) {
           backfill = 'validated';
-          console.log('[aiwa] sign-in already present; skip backfill');
+          log('log', '[aiwa] sign-in already present; skip backfill');
           finishBackfill();
           return;
         }
@@ -627,31 +839,31 @@ window.__ModuleLoader__.load({
         const result = await runInGuest(buildInjectScript(snapshot));
         if (!result) {
           backfill = 'failed';
-          console.warn('[aiwa] snapshot injection failed; keeping the guest as-is');
+          log('warn', '[aiwa] snapshot injection failed; keeping the guest as-is');
           finishBackfill();
           return;
         }
         if (webview !== element) return;
         if (result.ok !== true) {
           backfill = 'failed';
-          console.warn('[aiwa] snapshot injection failed (%s); keeping the guest as-is',
+          log('warn', '[aiwa] snapshot injection failed (%s); keeping the guest as-is',
             result && result.error ? result.error : 'unknown');
           finishBackfill();
           return;
         }
         backfill = 'injected';
-        console.log('[aiwa] snapshot injected; localStorage=%d cookie=%d', result.written, result.cookies);
+        log('log', '[aiwa] snapshot injected; localStorage=%d cookie=%d', result.written, result.cookies);
         if (webview !== element) return;
         try {
           const loading = webview.loadURL(SITE_URL);
           if (loading && typeof loading.catch === 'function') {
             loading.catch((error) => {
               if (isAbortedNavigation(error)) return;
-              console.warn('[aiwa] post-inject navigation failed', error && error.message);
+              log('warn', '[aiwa] post-inject navigation failed', error && error.message);
             });
           }
         } catch (error) {
-          console.warn('[aiwa] post-inject navigation failed', error && error.message);
+          log('warn', '[aiwa] post-inject navigation failed', error && error.message);
         }
       }
 
@@ -692,19 +904,28 @@ window.__ModuleLoader__.load({
       }
 
       function maybeStart() {
-        if (disposed || starting || webview !== null) return;
-        // crashed 也要放行：面板切走时崩溃会跳过重建，切回来必须能重新拉起（否则卡片停在「正在重建」但其实什么都没做）。
-        if (state.phase !== 'idle' && state.phase !== 'crashed') return;
-        if (!active || suspended || !placeholderRect()) return;
-        if (!bridgeInfo.ready) {
+        const decision = shouldStart({
+          disposed,
+          starting,
+          webview,
+          phase: state.phase,
+          active,
+          suspended,
+          hasRect: !!placeholderRect(),
+          bridgeReady: bridgeInfo.ready,
+          crashes,
+          max: MAX_CRASH_RESTARTS,
+        });
+        if (decision === 'unavailable') {
           if (state.phase !== 'unavailable') emit({ phase: 'unavailable' });
           return;
         }
         // 重建次数已用尽：停在卡片上等手动刷新，避免崩溃 → 重建 → 再崩溃的死循环。
-        if (state.phase === 'crashed' && crashes > MAX_CRASH_RESTARTS) {
+        if (decision === 'stop') {
           if (!state.stopped) emit({ stopped: true });
           return;
         }
+        if (decision !== 'start') return;
         void start();
       }
 
@@ -760,10 +981,9 @@ window.__ModuleLoader__.load({
         const message = event && typeof event.message === 'string' ? event.message : '';
         if (!message) return;
         const level = event.level;
-        const write = level === 3 || level === 'error'
-          ? console.error
-          : level === 2 || level === 'warning' ? console.warn : console.log;
-        write.call(console, '[aiwa][guest] %s', message);
+        const kind = level === 3 || level === 'error' ? 'error'
+          : level === 2 || level === 'warning' ? 'warn' : 'log';
+        log(kind, '[aiwa][guest] %s', message);
       }
 
       function wireGuest(element) {
@@ -800,13 +1020,13 @@ window.__ModuleLoader__.load({
         function loadSite() {
           if (webview !== element) return;
           loadAttempts += 1;
-          console.log('[aiwa] guest load attempt %d: %s', loadAttempts, SITE_URL);
+          log('log', '[aiwa] guest load attempt %d: %s', loadAttempts, SITE_URL);
           const loading = element.loadURL(SITE_URL);
           if (!loading || typeof loading.catch !== 'function') return;
           loading.catch((error) => {
             if (webview !== element) return;
             if (isAbortedNavigation(error)) {
-              console.warn('[aiwa] guest load aborted (redirect or superseded); waiting for navigation events');
+              log('warn', '[aiwa] guest load aborted (redirect or superseded); waiting for navigation events');
               if (loadAttempts < 2) {
                 loadTimer = setTimeout(() => {
                   loadTimer = null;
@@ -829,7 +1049,7 @@ window.__ModuleLoader__.load({
           }
           siteLoadStarted = true;
           emit({ phase: 'loading', error: null });
-          console.log('[aiwa] guest dom-ready; loading %s', SITE_URL);
+          log('log', '[aiwa] guest dom-ready; loading %s', SITE_URL);
           // 让主进程先完成 dom-ready 的 lease 认领，再发目标导航，避免引导文档归属校验被打断。
           if (loadTimer) clearTimeout(loadTimer);
           loadTimer = setTimeout(() => {
@@ -902,7 +1122,7 @@ window.__ModuleLoader__.load({
         try {
           await bridgeInfo.bridge.release(id);
         } catch (error) {
-          console.warn('[aiwa] guest release failed', error && error.message);
+          log('warn', '[aiwa] guest release failed', error && error.message);
         }
       }
 
@@ -959,22 +1179,23 @@ window.__ModuleLoader__.load({
       }
 
       function fail(message) {
-        console.warn('[aiwa] guest failed: %s', message);
+        log('warn', '[aiwa] guest failed: %s', message);
         emit({ phase: 'failed', error: message || null });
         void teardown();
       }
 
       function crash(reason) {
-        console.warn('[aiwa] guest gone: %s', reason);
+        log('warn', '[aiwa] guest gone: %s', reason);
         crashes += 1;
         emit({ phase: 'crashed', error: reason });
         void teardown().then(() => {
-          if (disposed || !active || suspended) return;
-          if (crashes > MAX_CRASH_RESTARTS) {
-            console.warn('[aiwa] guest crash limit reached; waiting for a manual refresh');
+          const decision = decideCrashRestart({ disposed, active, suspended, crashes, max: MAX_CRASH_RESTARTS });
+          if (decision === 'stop') {
+            log('warn', '[aiwa] guest crash limit reached; waiting for a manual refresh');
             emit({ stopped: true });
             return;
           }
+          if (decision !== 'restart') return;
           restartTimer = setTimeout(() => {
             restartTimer = null;
             if (disposed) return;
@@ -1004,10 +1225,10 @@ window.__ModuleLoader__.load({
           wireGuest(element);
           container.appendChild(element);
           unsubscribeOpen = bridgeInfo.bridge.onOpenRequested(lease, (url) => openExternal(url));
-          console.log('[aiwa] guest attached; lease=%s partition=%s', lease, partition);
+          log('log', '[aiwa] guest attached; lease=%s partition=%s', lease, partition);
           applyGeometry();
         } catch (error) {
-          console.warn('[aiwa] guest attach failed', error && error.message);
+          log('warn', '[aiwa] guest attach failed', error && error.message);
           emit({ phase: 'failed', error: (error && error.message) || 'attach failed' });
           await teardown();
         } finally {
@@ -1018,17 +1239,17 @@ window.__ModuleLoader__.load({
       function reload() {
         if (disposed) return;
         if (starting) {
-          console.log('[aiwa] reload ignored while the guest is starting');
+          log('log', '[aiwa] reload ignored while the guest is starting');
           return;
         }
         crashes = 0;
         if (webview) {
           try {
             webview.reload();
-            console.log('[aiwa] guest reload requested');
+            log('log', '[aiwa] guest reload requested');
             return;
           } catch (error) {
-            console.warn('[aiwa] guest reload failed', error && error.message);
+            log('warn', '[aiwa] guest reload failed', error && error.message);
           }
         }
         emit({ phase: 'idle', error: null, stopped: false });
@@ -1044,11 +1265,11 @@ window.__ModuleLoader__.load({
           target = SITE_URL;
         }
         try {
-          console.log('[aiwa] open in system browser: %s', target);
+          log('log', '[aiwa] open in system browser: %s', target);
           // 主进程的主窗口 setWindowOpenHandler 会把 http(s) 交给系统浏览器并 deny 新窗口。
           window.open(target, '_blank', 'noopener,noreferrer');
         } catch (error) {
-          console.warn('[aiwa] open in system browser failed', error && error.message);
+          log('warn', '[aiwa] open in system browser failed', error && error.message);
         }
       }
 
@@ -1113,6 +1334,9 @@ window.__ModuleLoader__.load({
         observePlaceholder,
         subscribe,
         getState,
+        diagnostics,
+        logEntries,
+        clearLogs,
         collectSnapshot,
         clearSnapshot,
         reload,
@@ -1154,7 +1378,7 @@ window.__ModuleLoader__.load({
         document.body.removeChild(area);
         return ok;
       } catch (error) {
-        console.warn('[aiwa] copy fallback failed', error && error.message);
+        log('warn', '[aiwa] copy fallback failed', error && error.message);
         return false;
       }
     }
@@ -1204,7 +1428,7 @@ window.__ModuleLoader__.load({
     function MainPanel({ t, controller }) {
       const host = controller.host;
       const [snapshot, setSnapshot] = useState(host.getState());
-      const [note, setNote] = useState('');
+      const [note, setNote] = useState(null);
       const stageRef = useRef(null);
       const bridge = useMemo(readBridge, []);
 
@@ -1218,16 +1442,18 @@ window.__ModuleLoader__.load({
 
       useEffect(() => {
         if (!note) return undefined;
-        const timer = setTimeout(() => setNote(''), 2200);
+        const timer = setTimeout(() => setNote(null), note.tone === 'error' ? 3500 : 2200);
         return () => clearTimeout(timer);
       }, [note]);
 
+      const showNote = (text, tone) => setNote({ text, tone });
+
       const onCopy = () => {
-        copyText(SITE_URL).then((ok) => setNote(ok ? t('copied') : t('copiedFailed')));
+        copyText(SITE_URL).then((ok) => showNote(ok ? t('copied') : t('copiedFailed'), ok ? 'ok' : 'error'));
       };
       const onClear = () => {
         controller.clearLogin();
-        setNote(t('cleared'));
+        showNote(t('cleared'), 'ok');
       };
 
       const failed = snapshot.phase === 'failed';
@@ -1270,7 +1496,8 @@ window.__ModuleLoader__.load({
             h('span', { className: 'aiwa-title' }, t('title')),
           ),
           snapshot.notice ? h('span', { className: 'aiwa-notice' }, t(snapshot.notice)) : null,
-          note ? h('span', { className: 'aiwa-toast' }, note) : null,
+          h('span', { className: 'aiwa-toast', 'data-tone': note ? note.tone : 'ok', role: 'status', 'aria-live': 'polite' },
+            note ? note.text : ''),
           h('span', { className: 'aiwa-spacer' }),
           h('button', { className: 'aiwa-btn', type: 'button', onClick: () => controller.refresh() }, t('refresh')),
           h('button', { className: 'aiwa-btn', type: 'button', onClick: () => controller.openExternal() }, t('openExternal')),
@@ -1320,17 +1547,22 @@ window.__ModuleLoader__.load({
     function SettingsSection({ t, controller, openPanel, close }) {
       const [hostState, setHostState] = useState(() => controller.host.getState());
       const [info, setInfo] = useState(() => controller.snapshotInfo());
+      const [diag, setDiag] = useState(() => controller.diagnostics());
+      const [entries, setEntries] = useState(() => controller.logs(LOG_SHOW));
       const [busy, setBusy] = useState(false);
-      const [note, setNote] = useState('');
+      const [note, setNote] = useState(null);
       const bridge = useMemo(readBridge, []);
 
       useEffect(() => {
         const refresh = () => {
           setHostState(controller.host.getState());
           setInfo(controller.snapshotInfo());
+          setDiag(controller.diagnostics());
+          setEntries(controller.logs(LOG_SHOW));
         };
         const unsubscribe = controller.host.subscribe(refresh);
-        const timer = setInterval(refresh, 5000);
+        // 日志不进 host 状态，靠定时器刷新；设置页打开时 1.5s 一次足够。
+        const timer = setInterval(refresh, 1500);
         window.addEventListener('focus', refresh);
         refresh();
         return () => {
@@ -1342,16 +1574,18 @@ window.__ModuleLoader__.load({
 
       useEffect(() => {
         if (!note) return undefined;
-        const timer = setTimeout(() => setNote(''), 2600);
+        const timer = setTimeout(() => setNote(null), note.tone === 'error' ? 3500 : 2600);
         return () => clearTimeout(timer);
       }, [note]);
+
+      const showNote = (text, tone) => setNote({ text, tone });
 
       const onOpen = () => {
         if (typeof openPanel === 'function') openPanel();
         if (typeof close === 'function') close();
       };
       const onCopy = () => {
-        copyText((info && info.url) || SITE_URL).then((ok) => setNote(ok ? t('copied') : t('copiedFailed')));
+        copyText((info && info.url) || SITE_URL).then((ok) => showNote(ok ? t('copied') : t('copiedFailed'), ok ? 'ok' : 'error'));
       };
       const onSave = async () => {
         if (busy) return;
@@ -1360,9 +1594,10 @@ window.__ModuleLoader__.load({
           const result = await controller.saveSnapshot();
           setHostState(controller.host.getState());
           setInfo(controller.snapshotInfo());
-          setNote(result.ok
+          showNote(result.ok
             ? t('settingsSavedOk')
-            : result.reason === 'signin' ? t('settingsNeedSignin') : t('settingsPanelClosed'));
+            : result.reason === 'signin' ? t('settingsNeedSignin') : t('settingsPanelClosed'),
+          result.ok ? 'ok' : 'error');
         } finally {
           setBusy(false);
         }
@@ -1371,11 +1606,23 @@ window.__ModuleLoader__.load({
         controller.clearLogin();
         setHostState(controller.host.getState());
         setInfo(controller.snapshotInfo());
-        setNote(t('settingsCleared'));
+        showNote(t('settingsCleared'), 'ok');
+      };
+      const onCopyDiag = () => {
+        copyText(buildDiagnosticReport(diag, entries)).then((ok) => showNote(ok ? t('diagCopied') : t('copiedFailed'), ok ? 'ok' : 'error'));
+      };
+      const onClearLogs = () => {
+        controller.clearLogs();
+        setEntries(controller.logs(LOG_SHOW));
+        showNote(t('diagCleared'), 'ok');
       };
 
       const statusTone = !info ? 'warn' : info.stale ? 'error' : 'ok';
       const statusText = !info ? t('settingsStatusMissing') : info.stale ? t('settingsStatusStale') : t('settingsStatusSaved');
+      const diagTone = diag.phase === 'ready' && !diag.stale && !diag.stopped ? 'ok'
+        : (diag.stopped || diag.phase === 'failed' || diag.phase === 'unavailable') ? 'error' : 'warn';
+      const diagSnapshotText = (!diag.hasSnapshot ? t('settingsStatusMissing')
+        : (diag.stale ? t('settingsStatusStale') : t('settingsStatusSaved')) + ' · ' + String(diag.keys));
       const bridgeText = (bridge.status === 'ready' ? t('settingsBridgeOk')
         : bridge.status === 'mismatch' ? t('bridgeMismatch') : t('settingsBridgeDown'))
         + (bridge.protocol === null ? '' : ' · ' + t('protocol') + ' ' + String(bridge.protocol));
@@ -1392,6 +1639,13 @@ window.__ModuleLoader__.load({
           h('div', { className: 'aiwa-sec-title' }, t('settingsTitle')),
           h('div', { className: 'aiwa-sec-desc' }, t('settingsDesc')),
         ),
+        h('div', {
+          className: 'aiwa-sec-note',
+          'data-tone': note ? note.tone : 'ok',
+          role: 'status',
+          'aria-live': 'polite',
+          style: { minHeight: '18px' },
+        }, note ? note.text : ''),
         h('div', { className: 'aiwa-sec-card' },
           h('div', { className: 'aiwa-sec-card-head' },
             h('span', { className: 'aiwa-sec-card-title' }, t('settingsTarget')),
@@ -1433,15 +1687,47 @@ window.__ModuleLoader__.load({
               disabled: busy || !info,
               onClick: onClear,
             }, t('settingsClear')),
-            note ? h('span', { className: 'aiwa-sec-note' }, note) : null,
           ),
-          !ready ? h('div', { className: 'aiwa-sec-note' }, t('settingsPanelClosed')) : null,
+          !ready ? h('div', { className: 'aiwa-sec-note' }, t('settingsPanelHint')) : null,
         ),
         h('div', { className: 'aiwa-sec-card' },
           h('div', { className: 'aiwa-sec-card-head' },
             h('span', { className: 'aiwa-sec-card-title' }, t('settingsBridge')),
             h('span', { className: 'aiwa-spacer' }),
             h('span', { className: 'aiwa-pill', 'data-tone': bridge.status === 'ready' ? 'ok' : 'warn' }, bridgeText),
+          ),
+        ),
+        h('div', { className: 'aiwa-sec-card' },
+          h('div', { className: 'aiwa-sec-card-head' },
+            h('span', { className: 'aiwa-sec-card-title' }, t('settingsDiagnostics')),
+            h('span', { className: 'aiwa-spacer' }),
+            h('span', { className: 'aiwa-pill', 'data-tone': diagTone }, diag.phase),
+          ),
+          row(t('diagLease'), diag.lease || '—', true),
+          row(t('diagHost'), diag.host || '—', true),
+          row(t('diagBackfill'), diag.backfill + (diag.stopped ? ' · stopped' : '')),
+          row(t('diagCrashes'), String(diag.crashes) + (diag.suspended ? ' · suspended' : '')),
+          row(t('diagSnapshotState'), diagSnapshotText),
+          h('div', { className: 'aiwa-sec-actions' },
+            h('button', { className: 'aiwa-btn', type: 'button', onClick: onCopyDiag }, t('diagCopy')),
+            h('button', {
+              className: 'aiwa-btn',
+              type: 'button',
+              disabled: !entries.length,
+              onClick: onClearLogs,
+            }, t('diagClear')),
+          ),
+          h('div', { className: 'aiwa-diag-logs', role: 'log' },
+            entries.length
+              ? entries.map((entry, index) => h('div', {
+                key: index,
+                className: 'aiwa-diag-line',
+                'data-level': entry.level,
+              },
+                h('span', { className: 'aiwa-diag-time' }, formatClock(entry.ts)),
+                h('span', { className: 'aiwa-diag-text' }, entry.text),
+              ))
+              : h('div', { className: 'aiwa-sec-note' }, t('diagEmpty')),
           ),
         ),
         h('div', { className: 'aiwa-sec-card' },
@@ -1481,7 +1767,7 @@ window.__ModuleLoader__.load({
             url: typeof site.url === 'string' && site.url ? site.url : SITE_URL,
             stale: site.stale === true,
             keys: Object.keys(stored).length,
-            cookies: cookie ? cookie.split(';').filter((part) => part.trim() !== '').length : 0,
+            cookies: countCookies(cookie),
             size,
             skipped: typeof site.skipped === 'number' ? site.skipped : 0,
             truncated: site.truncated === true,
@@ -1492,6 +1778,16 @@ window.__ModuleLoader__.load({
           const site = await host.collectSnapshot();
           if (site) return { ok: true, reason: null };
           return { ok: false, reason: host.getState().phase === 'ready' ? 'signin' : 'closed' };
+        },
+        /** 设置页诊断卡：状态摘要 + 最近日志；两者都只读。 */
+        diagnostics() {
+          return host.diagnostics();
+        },
+        logs(count) {
+          return host.logEntries(count);
+        },
+        clearLogs() {
+          host.clearLogs();
         },
         clearLogin() {
           host.clearSnapshot();
@@ -1507,6 +1803,28 @@ window.__ModuleLoader__.load({
 
     return {
       inject: ['slots', 'layout', 'locale'],
+      // 纯函数出口，供 `node --test` 使用；宿主只读 inject/apply，忽略未知字段。
+      __test: {
+        zh,
+        en,
+        GUEST_PROBE_SCRIPT,
+        GUEST_COLLECT_SCRIPT,
+        buildInjectScript,
+        redactLog,
+        formatLog,
+        formatClock,
+        formatTime,
+        formatSize,
+        countCookies,
+        probeVerdict,
+        needsProbeRetry,
+        decideCrashRestart,
+        shouldStart,
+        isAbortedNavigation,
+        readBridge,
+        buildDiagnosticReport,
+        createLogRing,
+      },
       apply(ctx) {
         ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'aiwa: dictionaries');
         const t = ctx.locale.bind(NS);
@@ -1540,7 +1858,7 @@ window.__ModuleLoader__.load({
           try {
             ctx.layout.selectPanel(PANEL_ID);
           } catch (error) {
-            console.warn('[aiwa] open panel from settings failed', error && error.message);
+            log('warn', '[aiwa] open panel from settings failed', error && error.message);
           }
         };
 
@@ -1570,16 +1888,16 @@ window.__ModuleLoader__.load({
               const info = ctx.layout.panelInfo;
               const active = info && typeof info.getSnapshot === 'function' ? info.getSnapshot().activePanelId : null;
               if (active === PANEL_ID) {
-                console.log('[aiwa] active panel was this panel; selectPanel(null) back to conversation');
+                log('log', '[aiwa] active panel was this panel; selectPanel(null) back to conversation');
                 ctx.layout.selectPanel(null);
               }
             } catch (error) {
-              console.warn('[aiwa] startup panel guard failed', error && error.message);
+              log('warn', '[aiwa] startup panel guard failed', error && error.message);
             }
           }, 'aiwa: startup panel guard');
         }
 
-        console.log('[aiwa] client ready; bridge=%s protocol=%s', bridgeInfo.ready ? 'ok' : 'unavailable',
+        log('log', '[aiwa] client ready; bridge=%s protocol=%s', bridgeInfo.ready ? 'ok' : 'unavailable',
           bridgeInfo.protocol === null ? 'n/a' : String(bridgeInfo.protocol));
       },
     };

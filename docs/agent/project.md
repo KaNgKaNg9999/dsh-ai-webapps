@@ -8,7 +8,7 @@
 - 不是什么：不是通用浏览器；不是 API/模型接入替代方案；不改 DSH 应用本体；V1 不做多站与登录态跨机迁移。
 - 技术栈：纯 JS（无构建）DSH client bundle；React 由宿主 `window.__ModuleLoader__` 提供；无第三方依赖；依赖 DSH `0.2.2-rc.5` 的 Slot 契约与 `globalThis.dshDesktop.browser` 桥（`protocolVersion: 1`）。
 - 关键目录：`client.js`（Client 半区全部实现）｜`index.js`（Host 空壳）｜`cordis.patch.yml`（bundle 行）｜`locale/`｜`docs/`。
-- 命令：`install_bundle`（插件管理器安装本目录）/ 无 / M0 六项手工验收 ／ 真机自动化取证（`node tools/cdp-eval.mjs`，**需带 `--remote-debugging-port=9222` 启动 DSH**，见 `docs/CODING.md` §2.1）/ 无 / `node --check client.js`
+- 命令：`install_bundle`（插件管理器安装本目录）/ 无 / `node --test`（41 条断言，零依赖）／ M0/M1 真机验收 ／ 真机自动化取证（`node tools/cdp-eval.mjs list|eval|listen|net|watch|crash`，**需带 `--remote-debugging-port=9222` 启动 DSH**，见 `docs/CODING.md` §2.1）/ 无 / `node --check client.js`
 - 分支/发布：主分支 `main`（2026-11-26 `git init`，无远端）；发布=本地目录安装，后续可发 npm 包。
 - 文档语言：中文。
 - 红线：不改 DSH 应用本体；不写入明文凭据。

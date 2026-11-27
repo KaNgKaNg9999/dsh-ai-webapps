@@ -13,8 +13,8 @@
 | 用途 | 命令 |
 |---|---|
 | 安装 | 通过 DSH 插件管理器 `install_bundle` 安装本目录（或 Plugins → Add plugin 选本地目录） |
-| 开发 | 无（纯 JS，无构建；改 `client.js` 后需重启 DSH 或刷新页面生效） |
-| 测试 | M0 六项手工验收（见 `docs/plans/01-M0-DeepSeek面板.md`）；真机自动化取证见 §2.1（**需带 `--remote-debugging-port=9222` 启动**）；后续可加 `node --test` |
+| 开发 | 无构建；profile 开 HMR 时改 `client.js` 会自动重载 Client 半区（插件实例重建、guest 重新加载，2026-11-27 实测）；改 Host 半区/清单或 HMR 未生效时重启 DSH 或刷新页面 |
+| 测试 | `node --test`（自动发现 `test/*.test.mjs`）；M0/M1 真机判据见 plans/01、02；真机自动化取证见 §2.1（**需带 `--remote-debugging-port=9222` 启动**） |
 | 构建 | 无（package 不含构建步骤） |
 | 静态检查 | `node --check client.js` 与 `node --check index.js` |
 | 真机取证 | `node tools/cdp-eval.mjs list｜eval "<表达式>"｜listen <秒> ["<触发>"]` —— 通过 CDP 在宿主渲染进程执行 JS、抓 console。前置条件与规则见 §2.1 |
@@ -59,11 +59,31 @@ node tools/cdp-eval.mjs eval "1+1"
 - 所有注册（slot / listener / timer / lease / DOM 容器）必须成对释放，统一放在 `ctx.effect` 或 `apply` 内的清理函数里；插件重载不得留下孤儿 guest。
 - 文本走 `ctx.locale`（先 `zh` + `en` 两份字典），不把中文硬编码进组件；面板 id 用 `ai-webapps:<siteId>`，存储键用 `dsh-ai-webapps.<name>.v1`。
 - 日志统一前缀 `[aiwa]`；只打键名/状态/错误码，不打 token、cookie 值。
-- 单文件优先：V1 全部实现放在 `client.js` 内（约 900–1600 行，当前 ~1480），模块化拆分等出现第二个站点再做。
+- 单文件优先：V1 全部实现放在 `client.js` 内（约 900–2000 行；诊断面板后约 1820 行，模块化拆分等出现第二个站点再做）。
+
+### 4.1 文案术语（中英对照）
+
+| 概念 | 中文 | English | 约束 |
+|---|---|---|---|
+| 产品名 | DeepSeek 网页面板 | DeepSeek web panel | 标题/详情用全名；左栏与设置导航用短名「DeepSeek 网页」/「DeepSeek web」 |
+| 面板 | 面板 | panel | 不写「面板页」；英文 `main panel` |
+| 登录 | 登录 / 重新登录 | sign-in（名词）/ sign in（动词） | 不用「登陆」；`Clear sign-in` 是按钮 |
+| 快照 | 登录快照 | saved sign-in / snapshot | 面向用户写 "saved sign-in"；诊断与文档可用 snapshot |
+| 回填 | 登录回填 | backfill | 只出现在诊断与文档 |
+| 桌面桥 | 桌面桥 | desktop bridge | 指宿主 `dshDesktop.browser`；面向用户不展开 |
+| 内嵌页面 | 内嵌页面 / 网页容器 | embedded page / web container | 面向用户不写 "guest" |
+| lease | 容器 lease | lease | 只在诊断卡出现 |
+| 平台 | DSH 桌面端 | DSH Desktop | 不写「桌面版」「客户端」 |
+
+- 中文用全角标点，省略号统一 `…`；拉丁字母/数字与中文之间保留一个半角空格（如 `DeepSeek 网页面板`）。
+- 英文标题/按钮/标签用 sentence case：只有首词与专有名词大写（`Copy diagnostics`、`Open in system browser`）。
+- 失败提示必须带下一步（如「请手动复制地址」）；不把 `guest` / `lease` / `backfill` / `token` 这类内部词放进普通用户可见文案。
+- `zh` / `en` 两份字典必须键集相同、值非空；新增文案一次补齐两边（T6 后有自动断言）。
 
 ## 5. 测试与门禁
 
-- 提交/交付前：`node --check client.js`、`node --check index.js`；`npm pkg`/JSON 可解析（`node -e "JSON.parse(...)"`）。
+- 提交/交付前：`node --check client.js`、`node --check index.js`；`node --test`（41 条断言，零依赖）；`npm pkg`/JSON 可解析。
+- 纯逻辑（回填判定、崩溃重建门、采集过滤、脱敏、文案键集）必须有测试；测试只读 `client.js` 的 `__test` 出口，不启动宿主。
 - M0 六项验收必须真机跑通并记录在 `docs/plans/01`；未跑通不标完成。
 - 不修改 profile 文件；安装失败先重启 DSH 再重试。
 
