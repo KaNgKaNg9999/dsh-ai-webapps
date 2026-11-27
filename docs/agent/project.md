@@ -10,6 +10,7 @@
 - 关键目录：`client.js`（Client 半区全部实现）｜`index.js`（Host 空壳）｜`cordis.patch.yml`（bundle 行）｜`locale/`｜`docs/`。
 - 命令：`install_bundle`（本地目录，或 `git+https://github.com/KaNgKaNg9999/dsh-ai-webapps.git#<40 位 commit>`，见 README）/ 无 / `node --test`（41 条断言，零依赖）／ M0/M1 真机验收 ／ 真机自动化取证（`node tools/cdp-eval.mjs list|eval|listen|net|watch|crash`，**需带 `--remote-debugging-port=9222` 启动 DSH**，见 `docs/CODING.md` §2.1）/ 无 / `node --check client.js`
 - 分支/发布：主分支 `main`；远端 `github.com/KaNgKaNg9999/dsh-ai-webapps`（2026-11-27 建立）；`v1.0.0`（tag 指向 `722fbe5`）已发布；交付=GitHub pin 完整 commit 直装，本地目录仅开发用，V1 不发 npm（D2 决策）。
+- 方向：**只做 DeepSeek 单站**（2026-11-27 决定）。多站与免登录增强已试做后放弃（HttpOnly 票据插件内不可读写），记录与回退见 `docs/plans/05-多站点尝试与放弃.md`；归档分支 `archive/v2-multi-site` 仅本地、未推送。
 - 文档语言：中文。
 - 红线：不改 DSH 应用本体；不写入明文凭据。
 
