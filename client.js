@@ -47,6 +47,7 @@ window.__ModuleLoader__.load({
       stepLoad: '加载界面',
       failed: '页面加载失败',
       crashed: '页面已崩溃，正在重建…',
+      crashedStopped: '自动重建已停止，请手动刷新',
       retry: '刷新重试',
       loginStale: '登录已失效，请重新登录',
       bridgeMissing: '桌面桥：不可用（需要 DSH 桌面端）',
@@ -109,6 +110,7 @@ window.__ModuleLoader__.load({
       stepLoad: 'Load interface',
       failed: 'The page failed to load',
       crashed: 'The page crashed; rebuilding…',
+      crashedStopped: 'Automatic rebuild stopped; reload manually',
       retry: 'Reload',
       loginStale: 'Saved sign-in expired; sign in again',
       bridgeMissing: 'Desktop bridge: unavailable (DSH Desktop required)',
@@ -411,6 +413,7 @@ window.__ModuleLoader__.load({
         notice: null,
         restoring: false,
         hasSnapshot: !!readSnapshotSite(),
+        stopped: false,
       };
       let container = null;
       let webview = null;
@@ -567,13 +570,21 @@ window.__ModuleLoader__.load({
       async function validateBackfill() {
         if (backfill !== 'injected' || !webview) return;
         const element = webview;
-        const probe = await runInGuest(GUEST_PROBE_SCRIPT);
+        let probe = await runInGuest(GUEST_PROBE_SCRIPT);
         if (!probe || webview !== element) return;
-        if (!probe.token) {
+        // 有 token 却仍停在登录路径：站点可能还在跳转，再给一次机会，避免误判有效会话。
+        if (probe.token && probe.login) {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          if (webview !== element) return;
+          probe = await runInGuest(GUEST_PROBE_SCRIPT);
+          if (!probe || webview !== element) return;
+        }
+        if (!probe.token || probe.login) {
           backfill = 'invalid';
           markSnapshotStale();
           emit({ notice: 'loginStale', restoring: false });
-          console.warn('[aiwa] backfill did not restore the sign-in; snapshot marked stale');
+          console.warn('[aiwa] backfill did not restore the sign-in (%s); snapshot marked stale',
+            probe.token ? 'still on ' + (probe.path || 'the sign-in path') : 'token key missing');
           finishBackfill();
           return;
         }
@@ -682,10 +693,16 @@ window.__ModuleLoader__.load({
 
       function maybeStart() {
         if (disposed || starting || webview !== null) return;
-        if (state.phase !== 'idle') return;
+        // crashed 也要放行：面板切走时崩溃会跳过重建，切回来必须能重新拉起（否则卡片停在「正在重建」但其实什么都没做）。
+        if (state.phase !== 'idle' && state.phase !== 'crashed') return;
         if (!active || suspended || !placeholderRect()) return;
         if (!bridgeInfo.ready) {
           if (state.phase !== 'unavailable') emit({ phase: 'unavailable' });
+          return;
+        }
+        // 重建次数已用尽：停在卡片上等手动刷新，避免崩溃 → 重建 → 再崩溃的死循环。
+        if (state.phase === 'crashed' && crashes > MAX_CRASH_RESTARTS) {
+          if (!state.stopped) emit({ stopped: true });
           return;
         }
         void start();
@@ -955,6 +972,7 @@ window.__ModuleLoader__.load({
           if (disposed || !active || suspended) return;
           if (crashes > MAX_CRASH_RESTARTS) {
             console.warn('[aiwa] guest crash limit reached; waiting for a manual refresh');
+            emit({ stopped: true });
             return;
           }
           restartTimer = setTimeout(() => {
@@ -970,7 +988,7 @@ window.__ModuleLoader__.load({
         if (disposed || starting || webview !== null) return;
         if (!bridgeInfo.ready || !container) return;
         starting = true;
-        emit({ phase: 'starting', error: null, restoring: false });
+        emit({ phase: 'starting', error: null, restoring: false, stopped: false });
         try {
           const reservation = await bridgeInfo.bridge.acquire(WORKSPACE_KEY);
           if (disposed || !container) {
@@ -1013,7 +1031,7 @@ window.__ModuleLoader__.load({
             console.warn('[aiwa] guest reload failed', error && error.message);
           }
         }
-        emit({ phase: 'idle', error: null });
+        emit({ phase: 'idle', error: null, stopped: false });
         void teardown();
       }
 
@@ -1213,6 +1231,7 @@ window.__ModuleLoader__.load({
       };
 
       const failed = snapshot.phase === 'failed';
+      const manualRetry = failed || (snapshot.phase === 'crashed' && !!snapshot.stopped);
       const busy = snapshot.phase === 'starting' || snapshot.phase === 'loading';
       const protocol = bridge.protocol === null ? '' : ' · ' + t('protocol') + ' ' + String(bridge.protocol);
       const bridgeHint = bridge.status === 'ready' ? null
@@ -1223,7 +1242,7 @@ window.__ModuleLoader__.load({
         : snapshot.phase === 'loading'
           ? (snapshot.restoring ? t('restoring') : t('loading'))
           : snapshot.phase === 'crashed'
-            ? t('crashed')
+            ? (snapshot.stopped ? t('crashedStopped') : t('crashed'))
             : failed
               ? t('failed')
               : t('placeholderHint');
@@ -1283,7 +1302,7 @@ window.__ModuleLoader__.load({
                   ? h('div', { className: 'aiwa-hint aiwa-error' }, snapshot.error)
                   : null,
                 bridgeHint ? h('div', { className: 'aiwa-hint aiwa-hint-dim' }, bridgeHint) : null,
-                failed
+                manualRetry
                   ? h('button', { className: 'aiwa-btn aiwa-btn-primary', type: 'button', onClick: () => controller.refresh() }, t('retry'))
                   : null,
                 busy ? h('div', { className: 'aiwa-progress', 'aria-hidden': 'true' }) : null,

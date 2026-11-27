@@ -16,3 +16,6 @@ coverage/
 # 本机运行时数据（登录快照只存 DSH 页面 localStorage，任何本地残留都不入仓）
 *.local
 .snapshot.json
+
+# dsh-pilot 屏幕操作的截图落点（真机验收时的临时产物）
+.dsh-pilot/
