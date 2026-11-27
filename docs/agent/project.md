@@ -8,8 +8,8 @@
 - 不是什么：不是通用浏览器；不是 API/模型接入替代方案；不改 DSH 应用本体；V1 不做多站与登录态跨机迁移。
 - 技术栈：纯 JS（无构建）DSH client bundle；React 由宿主 `window.__ModuleLoader__` 提供；无第三方依赖；依赖 DSH `0.2.2-rc.5` 的 Slot 契约与 `globalThis.dshDesktop.browser` 桥（`protocolVersion: 1`）。
 - 关键目录：`client.js`（Client 半区全部实现）｜`index.js`（Host 空壳）｜`cordis.patch.yml`（bundle 行）｜`locale/`｜`docs/`。
-- 命令：`install_bundle`（插件管理器安装本目录）/ 无 / `node --test`（41 条断言，零依赖）／ M0/M1 真机验收 ／ 真机自动化取证（`node tools/cdp-eval.mjs list|eval|listen|net|watch|crash`，**需带 `--remote-debugging-port=9222` 启动 DSH**，见 `docs/CODING.md` §2.1）/ 无 / `node --check client.js`
-- 分支/发布：主分支 `main`（2026-11-26 `git init`，无远端）；发布=本地目录安装，后续可发 npm 包。
+- 命令：`install_bundle`（本地目录，或 `git+https://github.com/KaNgKaNg9999/dsh-ai-webapps.git#<40 位 commit>`，见 README）/ 无 / `node --test`（41 条断言，零依赖）／ M0/M1 真机验收 ／ 真机自动化取证（`node tools/cdp-eval.mjs list|eval|listen|net|watch|crash`，**需带 `--remote-debugging-port=9222` 启动 DSH**，见 `docs/CODING.md` §2.1）/ 无 / `node --check client.js`
+- 分支/发布：主分支 `main`；远端 `github.com/KaNgKaNg9999/dsh-ai-webapps`（2026-11-27 建立）；`v1.0.0`（tag 指向 `722fbe5`）已发布；交付=GitHub pin 完整 commit 直装，本地目录仅开发用，V1 不发 npm（D2 决策）。
 - 文档语言：中文。
 - 红线：不改 DSH 应用本体；不写入明文凭据。
 
@@ -63,7 +63,7 @@
 
 1. **不改 DSH 应用本体**：不修改 `app.asar`、DSH 安装目录、profile 的 `package.json` / `cordis.patch.yml`（安装与行开关交给插件管理器 `install_bundle` / 插件页面）。只用公开 Slot 契约与 `globalThis.dshDesktop.browser` 桥；桥不可用或协议版本不符时降级提示，不绕过。
 2. **不写入明文凭据**：用户 token / cookie 只存在于本机运行时快照（`dsh-ai-webapps.snapshot.v1`，位于 DSH 页面 localStorage），不进仓库、不进日志、不进文档、不进测试夹具；排障只打印键名与状态，不打印值。
-3. git 写操作（commit / push / tag）先询问；仓库已于 2026-11-26 初始化（`main`，无远端），提交格式见 `docs/CODING.md` §3。
+3. git 写操作（commit / push / tag）先询问；仓库 2026-11-26 初始化（`main`），2026-11-27 建立 GitHub 远端 `origin` 并发布 `v1.0.0`，提交格式见 `docs/CODING.md` §3。
 
 ## 五、批次索引
 

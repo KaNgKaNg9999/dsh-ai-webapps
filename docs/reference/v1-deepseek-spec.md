@@ -3,7 +3,7 @@
 
 # V1 规格 v2 — DeepSeek 网页面板（dsh-ai-webapps）
 
-> 状态：**设计定稿**（T1–T14 全部确认），待施工 + M0 真机验证
+> 状态：**已实现并通过验收**（M0 六项 + M1 五项，1.0.0，2026-11-27）；T1–T14 决策未变
 > 前序：[ai-webapps-feasibility.md](ai-webapps-feasibility.md)（可行性）、[ai-webapps-review.md](ai-webapps-review.md)（第一轮评审）
 > 环境：DSH Desktop 0.2.2-rc.5 / profile `desktop` / `app.asar` 已还原为官方原版
 

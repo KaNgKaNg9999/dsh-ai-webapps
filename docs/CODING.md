@@ -12,7 +12,7 @@
 
 | 用途 | 命令 |
 |---|---|
-| 安装 | 通过 DSH 插件管理器 `install_bundle` 安装本目录（或 Plugins → Add plugin 选本地目录） |
+| 安装 | 开发期：`install_bundle` 指向本目录（或 Add plugin 选本地目录）；交付：`git+https://github.com/KaNgKaNg9999/dsh-ai-webapps.git#<40 位 commit>`（见 README） |
 | 开发 | 无构建；profile 开 HMR 时改 `client.js` 会自动重载 Client 半区（插件实例重建、guest 重新加载，2026-11-27 实测）；改 Host 半区/清单或 HMR 未生效时重启 DSH 或刷新页面 |
 | 测试 | `node --test`（自动发现 `test/*.test.mjs`）；M0/M1 真机判据见 plans/01、02；真机自动化取证见 §2.1（**需带 `--remote-debugging-port=9222` 启动**） |
 | 构建 | 无（package 不含构建步骤） |
@@ -47,8 +47,8 @@ node tools/cdp-eval.mjs eval "1+1"
 ## 3. 分支与提交
 
 - 分支：`main`（2026-11-26 `git init`）
-- 远端：无（不自动 push，需要时单独确认）
-- 发布：本地目录安装；后续可发布 npm 包（需先补 `files` 校验）
+- 远端：`origin` = `github.com/KaNgKaNg9999/dsh-ai-webapps`（2026-11-27 建立）；不自动 push，需要时单独确认
+- 发布：`git tag` + GitHub pin 完整 commit 直装（`v1.0.0` 已于 2026-11-27 发布）；V1 不发 npm（D2）；已发布 commit 不改写
 - 提交：`<type>: <summary>`（type ∈ feat/fix/docs/refactor/chore），一次提交一个可验收变更
 
 ## 4. 代码风格与结构
@@ -59,7 +59,7 @@ node tools/cdp-eval.mjs eval "1+1"
 - 所有注册（slot / listener / timer / lease / DOM 容器）必须成对释放，统一放在 `ctx.effect` 或 `apply` 内的清理函数里；插件重载不得留下孤儿 guest。
 - 文本走 `ctx.locale`（先 `zh` + `en` 两份字典），不把中文硬编码进组件；面板 id 用 `ai-webapps:<siteId>`，存储键用 `dsh-ai-webapps.<name>.v1`。
 - 日志统一前缀 `[aiwa]`；只打键名/状态/错误码，不打 token、cookie 值。
-- 单文件优先：V1 全部实现放在 `client.js` 内（约 900–2000 行；诊断面板后约 1820 行，模块化拆分等出现第二个站点再做）。
+- 单文件优先：V1 全部实现放在 `client.js` 内（约 900–2000 行；诊断面板后约 1900 行，模块化拆分等出现第二个站点再做）。
 
 ### 4.1 文案术语（中英对照）
 

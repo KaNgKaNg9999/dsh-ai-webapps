@@ -3,6 +3,12 @@
 > 格式：倒序，最新在最上；新条目插到本说明块紧下方。每条 ≤5 行：日期 ｜ 批次 ｜ 主题，加 2–3 条要点（完成/文件/设计变更/下一步）。
 > 会话结束协议追加，跨会话续接的唯一进度源。条数 >25 时，第 26 条及更早的整段剪切至 `process-archive.md` 顶部。
 
+## 2026-11-27 ｜ 计划04 ｜ V1 残留收口（已收口）
+- 计划03：勾 A1（9222 实测关闭）、A3（stale 按单测+M1 证据等效覆盖）、A2（用户通读 DETAIL 六点全通）、删重复验收行
+- 文档：project/CODING/overview/architecture/spec 去掉「无远端/待施工/初稿/1820 行」；plans/README 回填 03 提交并加 04 ✅
+- 环境：删 .dsh-pilot 截图、撤销 git 全局 GitHub 代理；`node --test` 41 条、`node --check` 通过；未改 client.js、tag 不动
+- 状态：04 ✅（提交见 git log）；仓库比 origin 多 1 个 docs 提交，未 push；V2 待另立计划
+
 ## 2026-11-27 ｜ 计划03 ｜ V1 收尾完成并发布 v1.0.0
 - T1–T7 全过：设置页诊断（环形 200 条、脱敏含 UUID、复制/清空）、check_device 200 code 0、选中态不持久（ui-layout「resets on reload」）、DETAIL/README/CHANGELOG 定稿、中英文案、失败 3.5s/成功 2.2s toast、`node --test` 41 条。
 - 发布：GitHub `KaNgKaNg9999/dsh-ai-webapps`，commit `5f42ffe`/`722fbe5`/`7702fbd`，tag `v1.0.0`（指向 722fbe5）；profile 由 `link:` 切到 `github:…#722fbe5`，正常重启后诊断 `登录回填 validated`、面板直接进聊天页。

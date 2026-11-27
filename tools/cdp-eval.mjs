@@ -336,7 +336,7 @@ async function main() {
       return;
     }
 
-    throw new Error(`未知模式: ${mode}（可用: list / eval / listen / net / crash）`);
+    throw new Error(`未知模式: ${mode}（可用: list / eval / listen / net / watch / crash）`);
   } finally {
     cdp.close();
   }
