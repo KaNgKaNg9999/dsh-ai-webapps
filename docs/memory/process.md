@@ -3,6 +3,12 @@
 > 格式：倒序，最新在最上；新条目插到本说明块紧下方。每条 ≤5 行：日期 ｜ 批次 ｜ 主题，加 2–3 条要点（完成/文件/设计变更/下一步）。
 > 会话结束协议追加，跨会话续接的唯一进度源。条数 >25 时，第 26 条及更早的整段剪切至 `process-archive.md` 顶部。
 
+## 2026-11-27 ｜ 计划03 ｜ V1 收尾完成并发布 v1.0.0
+- T1–T7 全过：设置页诊断（环形 200 条、脱敏含 UUID、复制/清空）、check_device 200 code 0、选中态不持久（ui-layout「resets on reload」）、DETAIL/README/CHANGELOG 定稿、中英文案、失败 3.5s/成功 2.2s toast、`node --test` 41 条。
+- 发布：GitHub `KaNgKaNg9999/dsh-ai-webapps`，commit `5f42ffe`/`722fbe5`/`7702fbd`，tag `v1.0.0`（指向 722fbe5）；profile 由 `link:` 切到 `github:…#722fbe5`，正常重启后诊断 `登录回填 validated`、面板直接进聊天页。
+- 环境：profile 开 HMR（改 `client.js` 自动重载 Client 半区）；本机 GitHub 需代理 `127.0.0.1:6234`（已设 global git proxy，撤销用 `git config --global --unset http.https://github.com.proxy`）；9222 已关。
+- 下一步：V2（多站/千问）或按 plans/03「不在范围」另立计划。
+
 ## 2026-11-27 ｜ 计划02 ｜ M1 五项验收全部通过（含 2 处修复）
 - 手段：`--remote-debugging-port=9222` + 新增 `tools/cdp-eval.mjs`（CDP 执行 JS/抓 console）；崩溃注入改用「外部杀 guest 渲染进程」，用 CPU 时间增量精确认进程
 - 结论：V5 通过（口径修正：只有设置弹窗与右键菜单能与 guest 同屏）；V1 通过（warn/error/前缀/站点日志全中）；V3 通过；V4 通过；V2 登录成功放行（无 Cloudflare Turnstile，仅站点自带的图片选择验证码），R5 不实现
